@@ -1,0 +1,141 @@
+// Prisma schema for the llms.txt generator.
+// SQLite is used for local/demo persistence — see README "Tradeoffs".
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Website {
+  id          String @id @default(cuid())
+  baseUrl     String
+  // Normalized origin used to de-dupe websites (scheme + host, no trailing slash).
+  normalizedUrl String @unique
+
+  siteName        String?
+  siteDescription String?
+
+  // Existing /llms.txt detected on the live site, if any (Phase "Existing llms.txt Detection").
+  existingLlmsTxtContent String?
+  existingLlmsTxtCheckedAt DateTime?
+
+  monitoringEnabled   Boolean @default(false)
+  // manual | daily | weekly
+  monitoringFrequency String  @default("daily")
+  lastCrawledAt        DateTime?
+  nextScheduledCrawlAt DateTime?
+
+  robotsDisallowedPaths String? // JSON string[] — paths blocked by robots.txt, shown to the user
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pages          Page[]
+  generatedFiles GeneratedFile[]
+  crawls         Crawl[]
+  changeEvents   ChangeEvent[]
+
+  @@index([monitoringEnabled, nextScheduledCrawlAt])
+}
+
+model Page {
+  id        String  @id @default(cuid())
+  websiteId String
+  website   Website @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  url          String
+  canonicalUrl String?
+  markdownUrl  String?
+
+  title       String?
+  description String?
+  headings    String? // JSON string[]
+
+  contentExcerpt String? // short excerpt used for LLM analysis / debugging
+  contentHash    String? // sha256 of normalized (title+description+main content)
+
+  category        String? // Documentation | Getting Started | Guides | ... | null if excluded
+  importanceScore Float   @default(0)
+  included        Boolean @default(false)
+  excludeReason   String? // duplicate | thin-content | navigation | auth | tracking | pagination | low-priority ...
+
+  analysisSource String? // "deterministic" | "llm"
+
+  wordCount   Int?
+  depth       Int?
+  statusCode  Int?
+  contentType String?
+  inboundLinks Int @default(0)
+
+  firstSeenAt DateTime  @default(now())
+  lastSeenAt  DateTime?
+  missingSince DateTime? // set the first time a crawl fails to find this page again
+  removedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([websiteId, url])
+  @@index([websiteId, included])
+}
+
+model GeneratedFile {
+  id        String  @id @default(cuid())
+  websiteId String
+  website   Website @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  content String
+  version Int
+  stats   String? // JSON snapshot: { discovered, crawled, included, excluded, failed, sections }
+
+  createdAt DateTime @default(now())
+
+  @@index([websiteId, version])
+}
+
+model Crawl {
+  id        String  @id @default(cuid())
+  websiteId String
+  website   Website @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  // pending | running | completed | failed
+  status String @default("pending")
+  // discovering | crawling | extracting | analyzing | organizing | generating | done
+  stage       String?
+  stageDetail String?
+  trigger     String @default("manual") // manual | scheduled
+
+  pagesDiscovered Int @default(0)
+  pagesCrawled    Int @default(0)
+  pagesIncluded   Int @default(0)
+  pagesExcluded   Int @default(0)
+  pagesFailed     Int @default(0)
+
+  exclusionBreakdown String? // JSON: { duplicate: n, thinContent: n, ... }
+  error              String?
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  @@index([websiteId, startedAt])
+}
+
+model ChangeEvent {
+  id        String  @id @default(cuid())
+  websiteId String
+  website   Website @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  crawlId   String?
+
+  type    String // added | changed | removed
+  pageUrl String
+  title   String?
+  summary String?
+
+  createdAt DateTime @default(now())
+
+  @@index([websiteId, createdAt])
+}
