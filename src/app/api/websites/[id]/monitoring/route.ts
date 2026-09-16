@@ -5,8 +5,9 @@ import type { MonitoringFrequency } from '@/types';
 
 const VALID_FREQUENCIES: MonitoringFrequency[] = ['manual', 'daily', 'weekly'];
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const website = await getWebsite(params.id);
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const website = await getWebsite(id);
   if (!website) return NextResponse.json({ error: 'Website not found' }, { status: 404 });
 
   const body = await req.json().catch(() => ({}));

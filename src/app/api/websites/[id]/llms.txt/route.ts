@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getWebsite, getLatestGeneratedFile } from '@/lib/db/repository';
 
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const website = await getWebsite(params.id);
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const website = await getWebsite(id);
   if (!website) return NextResponse.json({ error: 'Website not found' }, { status: 404 });
 
   const file = await getLatestGeneratedFile(website.id);

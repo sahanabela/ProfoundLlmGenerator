@@ -6,8 +6,9 @@ import { groupPagesBySection, buildCandidatesFromStoredPages, isHomepageUrl } fr
 // in llms.txt right now, plus the excluded pages so a person can re-add one.
 // A read-only preview — see regenerate-file for the endpoint that actually
 // persists any newly-curated-out pages.
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const website = await getWebsite(params.id);
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const website = await getWebsite(id);
   if (!website) return NextResponse.json({ error: 'Website not found' }, { status: 404 });
 
   const allPages = await getPagesForWebsite(website.id);

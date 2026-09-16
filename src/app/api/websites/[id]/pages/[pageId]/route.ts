@@ -3,8 +3,9 @@ import { getPageForWebsite, applyPageEdit } from '@/lib/db/repository';
 
 // A single manual edit from the "Editable Preview": description, section
 // (move/rename via override), or included (remove/re-add).
-export async function PATCH(req: NextRequest, { params }: { params: { id: string; pageId: string } }) {
-  const existing = await getPageForWebsite(params.id, params.pageId);
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string; pageId: string }> }) {
+  const { id, pageId } = await params;
+  const existing = await getPageForWebsite(id, pageId);
   if (!existing) return NextResponse.json({ error: 'Page not found' }, { status: 404 });
 
   const body = await req.json().catch(() => ({}));
@@ -18,6 +19,6 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: 'Nothing to update — expected description, section, and/or included.' }, { status: 400 });
   }
 
-  const updated = await applyPageEdit(params.pageId, edit);
+  const updated = await applyPageEdit(pageId, edit);
   return NextResponse.json({ page: updated });
 }

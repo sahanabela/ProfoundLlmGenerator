@@ -4,8 +4,9 @@ import { regenerateFromStoredPages } from '@/lib/pipeline';
 
 // Rebuilds llms.txt from the current (possibly hand-edited) Page rows,
 // without recrawling. Used by the "Editable Preview"'s Save action.
-export async function POST(_req: Request, { params }: { params: { id: string } }) {
-  const website = await getWebsite(params.id);
+export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const website = await getWebsite(id);
   if (!website) return NextResponse.json({ error: 'Website not found' }, { status: 404 });
 
   try {
