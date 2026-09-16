@@ -48,7 +48,7 @@ and it will:
                  API Layer  (src/app/api/websites/...)
                       │
                       ▼
-               Website Analyzer (src/lib/pipeline.ts)
+               Website Analyzer (src/lib/pipeline/)
           ┌───────────┼───────────┐
           ▼           ▼           ▼
       Discovery    Extraction   Analysis
@@ -69,7 +69,7 @@ and it will:
              scheduler + diff + re-crawl
 ```
 
-Logical pipeline inside the analyzer (`src/lib/pipeline.ts`), mirroring the phases below:
+Logical pipeline inside the analyzer (`src/lib/pipeline/`), mirroring the phases below:
 
 ```
 URL Submission → Generation API → Website Analyzer
@@ -119,7 +119,11 @@ src/
     monitoring/                diff.ts, scheduler.ts
     security/                  ssrf.ts, safeFetch.ts
     db/                        client.ts, repository.ts (Prisma)
-    pipeline.ts                orchestrates all of the above
+    pipeline/                  orchestrates all of the above — index.ts is the thin
+                               entry point (runCrawlPipeline, regenerateFromStoredPages);
+                               everything it calls (classifyPages, refineAnalysis,
+                               buildSections, persist, inboundLinks, stats) is a small,
+                               independently-unit-tested phase in its own file
   scripts/runScheduler.ts      standalone monitoring scheduler process
   types/                       shared domain types
 prisma/schema.prisma           Website / Page / GeneratedFile / Crawl / ChangeEvent
@@ -262,6 +266,14 @@ see Tradeoffs.
 - **Curation over completeness**: the generator caps pages per section and overall and actively demotes/drops
   lower-importance pages rather than listing everything discovered — matching the spec's intent that llms.txt is a
   curated map, not a sitemap.
+- **`npm audit` findings were triaged, not blindly force-fixed**: a critical Next.js CVE had no fix backported to
+  the 14.x line, so the app was upgraded to Next 15.5.25 + React 19 (the oldest patched Next 15 release that still
+  supports this project's Node version) rather than jumping to `npm audit fix --force`'s suggested Next 16, which
+  requires a newer Node than this environment has. Two other flagged vulnerabilities were deliberately left
+  unaddressed after checking their actual reachability: `fast-xml-parser`'s advisory is in `XMLBuilder`, which this
+  codebase never imports (only `XMLParser`, for reading sitemaps), and Vitest's is in the `--ui` dev server, which
+  is never started (`npm test` only ever runs `vitest run`). Force-upgrading either would have meant a major-version
+  bump for no actual security benefit.
 
 ## API
 
@@ -283,7 +295,7 @@ GET    /api/files                       every website's current generated file, 
 
 ## Testing
 
-`npm test` runs the Vitest suite (88 tests) covering URL normalization, internal/external + binary-asset
+`npm test` runs the Vitest suite (109 tests) covering URL normalization, internal/external + binary-asset
 detection, robots.txt parsing/precedence, sitemap + sitemap-index parsing (mocked HTTP), SSRF IP-range checks,
 deterministic classification, importance scoring, content filtering (duplicates/thin-content/navigation), section
 organization/curation caps, llms.txt generation + validation, and change diffing. No real network access is

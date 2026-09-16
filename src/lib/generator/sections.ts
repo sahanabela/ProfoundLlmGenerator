@@ -88,7 +88,8 @@ export function organizeSections(pages: SectionCandidate[]): OrganizeResult {
   return { sections, curatedOut, pageSectionMap };
 }
 
-function toLink(page: SectionCandidate): LlmsTxtLink {
+/** Renders a section candidate as the Markdown link that represents it, preferring its markdown alternate URL. */
+export function toLink(page: SectionCandidate): LlmsTxtLink {
   return {
     title: page.title,
     url: page.markdownUrl ?? page.url,
