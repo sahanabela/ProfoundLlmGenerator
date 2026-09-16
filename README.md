@@ -1,4 +1,7 @@
-# Waypoint — automated llms.txt generator
+# Waypoint by Profound — automated llms.txt generator
+
+> A demo product concept built as an extension of [Profound](https://www.tryprofound.com/) — a curated llms.txt
+> generator and monitor for the AI-visibility era. Not an official Profound product.
 
 Point Waypoint at a website and it discovers the site's structure, crawls the pages that matter, and curates a
 concise, spec-compliant [`llms.txt`](https://llmstxt.org/) file — a small, high-signal map of the site for AI
@@ -271,11 +274,15 @@ GET    /api/websites/:id/llms.txt       download the latest generated file (text
 GET    /api/websites/:id/pages          all discovered pages with category/importance/exclusion reason
 GET    /api/websites/:id/changes        change history (added/changed/removed)
 PATCH  /api/websites/:id/monitoring     { enabled, frequency }
+GET    /api/websites/:id/editor         pages grouped by section, as they'll render, + excluded pages (Editable Preview)
+PATCH  /api/websites/:id/pages/:pageId  { description?, section?, included? } — one manual edit
+POST   /api/websites/:id/regenerate-file  rebuild llms.txt from current (edited) Page rows, no recrawl
+GET    /api/files                       every website's current generated file, for the Library table
 ```
 
 ## Testing
 
-`npm test` runs the Vitest suite (79 tests) covering URL normalization, internal/external + binary-asset
+`npm test` runs the Vitest suite (87 tests) covering URL normalization, internal/external + binary-asset
 detection, robots.txt parsing/precedence, sitemap + sitemap-index parsing (mocked HTTP), SSRF IP-range checks,
 deterministic classification, importance scoring, content filtering (duplicates/thin-content/navigation), section
 organization/curation caps, llms.txt generation + validation, and change diffing. No real network access is
@@ -283,8 +290,25 @@ required for any test.
 
 ## Nice-to-have features implemented
 
+- **Editable Preview** — automatic curation is never perfect, so the "Edit sections & pages" view lets you rename a
+  section (renames it for every page currently in it), move a page to any section — existing or brand new — edit
+  its description inline, or remove/re-add a page, then "Save & regenerate" rebuilds the file from that edited
+  state without recrawling. A manually-placed page bypasses the normal per-section curation cap (it's an explicit
+  choice); everything else keeps going through the same automatic cap-and-overflow-to-Optional logic used right
+  after a crawl — including re-curating on save, so freeing up a slot (by moving or removing a page) can pull
+  another page back in from Optional. Edits are stored per-page (`Page.sectionOverride`) and survive re-crawling as
+  long as that page's content hasn't changed, the same way cached category/description do (see "How updates work").
 - **Existing `/llms.txt` detection** — checked once per site; shown in the UI, expandable, for comparison.
 - **Transparent exclusion reporting** — every excluded page is bucketed by reason (duplicate, auth, thin-content,
-  navigation, tracking, pagination, robots-blocked, below the curation cutoff, …) and shown in the UI.
+  navigation, tracking, pagination, robots-blocked, below the curation cutoff, removed manually, …) and shown in
+  the UI.
 - **Change history** — every added/changed/removed page is recorded as a `ChangeEvent` (`GET /:id/changes`).
 - **robots.txt transparency** — a banner tells the user how many paths were off-limits and why.
+
+### Known limitation
+
+Homepage detection (used to fold the root page into the H1/summary instead of listing it as a link) compares the
+crawled page's origin against the website's original input origin. A site that redirects its root to a different
+domain (e.g. `vitejs.dev` → `vite.dev`) can slip past that check and show up as a normal link instead. Pre-existing
+behavior, not introduced by the editor — noted here rather than silently patched, since a robust fix (e.g. tracking
+the *actual* seed URL's final redirected origin per crawl) is a small, separate, focused change.

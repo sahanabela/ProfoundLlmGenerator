@@ -4,8 +4,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { CrawlProgress } from '@/components/CrawlProgress';
+import { BrandLockup } from '@/components/BrandLockup';
 import { WebsiteStats, type GeneratedStats } from '@/components/WebsiteStats';
 import { LlmsPreview } from '@/components/LlmsPreview';
+import { EditablePreview } from '@/components/EditablePreview';
 import { MonitoringToggle } from '@/components/MonitoringToggle';
 import { formatHostname, formatRelativeTime } from '@/lib/format';
 import type { MonitoringFrequency } from '@/types';
@@ -50,6 +52,7 @@ export default function SitePage() {
   const [generatedFile, setGeneratedFile] = useState<GeneratedFile | null>(null);
   const [showExisting, setShowExisting] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [mode, setMode] = useState<'preview' | 'edit'>('preview');
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const poll = useCallback(async () => {
@@ -99,13 +102,17 @@ export default function SitePage() {
 
       <div className="relative mx-auto max-w-3xl px-6">
         <header className="flex items-center justify-between py-8">
-          <Link href="/" className="flex items-center gap-2.5">
-            <Mark />
-            <span className="font-display text-lg tracking-tight">Waypoint</span>
+          <Link href="/">
+            <BrandLockup />
           </Link>
-          <Link href="/" className="text-xs font-medium text-ink-950/45 hover:text-ink-950">
-            ← Analyze another site
-          </Link>
+          <nav className="flex items-center gap-4 text-xs font-medium text-ink-950/45">
+            <Link href="/library" className="hover:text-ink-950">
+              Library
+            </Link>
+            <Link href="/" className="hover:text-ink-950">
+              ← Analyze another site
+            </Link>
+          </nav>
         </header>
 
         {inProgress && (
@@ -147,18 +154,41 @@ export default function SitePage() {
 
             <WebsiteStats stats={stats} lastCrawledAt={website.lastCrawledAt} />
 
-            <LlmsPreview content={generatedFile.content} hostname={hostname} />
-
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                onClick={handleRegenerate}
-                disabled={regenerating}
-                className="rounded-lg bg-ink-950 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-accent disabled:opacity-50"
-              >
-                {regenerating ? 'Starting…' : 'Regenerate now'}
-              </button>
-              <span className="text-xs text-ink-950/35">v{generatedFile.version} · generated {formatRelativeTime(generatedFile.createdAt)}</span>
-            </div>
+            {mode === 'preview' ? (
+              <>
+                <LlmsPreview content={generatedFile.content} hostname={hostname} />
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    onClick={handleRegenerate}
+                    disabled={regenerating}
+                    className="rounded-lg bg-ink-950 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-accent disabled:opacity-50"
+                  >
+                    {regenerating ? 'Starting…' : 'Regenerate now'}
+                  </button>
+                  <button
+                    onClick={() => setMode('edit')}
+                    className="rounded-lg border border-ink-950/15 px-4 py-2.5 text-sm font-medium text-ink-950/70 transition hover:border-ink-950/30 hover:text-ink-950"
+                  >
+                    Edit sections & pages
+                  </button>
+                  <span className="text-xs text-ink-950/35">v{generatedFile.version} · generated {formatRelativeTime(generatedFile.createdAt)}</span>
+                </div>
+              </>
+            ) : (
+              <EditablePreview
+                websiteId={website.id}
+                onClose={() => setMode('preview')}
+                onSaved={(result) => {
+                  setGeneratedFile({
+                    content: result.content,
+                    version: result.version,
+                    stats: typeof result.stats === 'string' ? result.stats : JSON.stringify(result.stats),
+                    createdAt: result.createdAt,
+                  });
+                  setMode('preview');
+                }}
+              />
+            )}
 
             <MonitoringToggle
               websiteId={website.id}
@@ -187,14 +217,5 @@ export default function SitePage() {
         )}
       </div>
     </main>
-  );
-}
-
-function Mark() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="26" height="26" rx="7" fill="#0A0A12" />
-      <path d="M13 6L17.5 13L13 20L8.5 13L13 6Z" fill="#FF5A36" />
-    </svg>
   );
 }

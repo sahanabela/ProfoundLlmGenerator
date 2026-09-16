@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { BrandLockup } from '@/components/BrandLockup';
 
 const EXAMPLE_SITES = ['stripe.com', 'vercel.com', 'anthropic.com'];
 
@@ -44,18 +46,20 @@ export default function HomePage() {
 
       <div className="relative mx-auto flex min-h-screen max-w-5xl flex-col px-6">
         <header className="flex items-center justify-between py-8">
-          <div className="flex items-center gap-2.5">
-            <Mark />
-            <span className="font-display text-lg tracking-tight">Waypoint</span>
-          </div>
-          <a
-            href="https://llmstxt.org/"
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-full border border-ink-950/10 px-3.5 py-1.5 text-xs font-medium text-ink-950/60 transition hover:border-ink-950/20 hover:text-ink-950"
-          >
-            llms.txt spec ↗
-          </a>
+          <BrandLockup />
+          <nav className="flex items-center gap-4">
+            <Link href="/library" className="text-xs font-medium text-ink-950/50 transition hover:text-ink-950">
+              Library
+            </Link>
+            <a
+              href="https://llmstxt.org/"
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-full border border-ink-950/10 px-3.5 py-1.5 text-xs font-medium text-ink-950/60 transition hover:border-ink-950/20 hover:text-ink-950"
+            >
+              llms.txt spec ↗
+            </a>
+          </nav>
         </header>
 
         <div className="flex flex-1 flex-col items-center justify-center gap-10 pb-24 pt-8 text-center">
@@ -135,15 +139,6 @@ function FeatureCard({ title, body }: { title: string; body: string }) {
       <p className="font-display text-sm text-ink-950">{title}</p>
       <p className="mt-1 text-xs leading-relaxed text-ink-950/55">{body}</p>
     </div>
-  );
-}
-
-function Mark() {
-  return (
-    <svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="26" height="26" rx="7" fill="#0A0A12" />
-      <path d="M13 6L17.5 13L13 20L8.5 13L13 6Z" fill="#FF5A36" />
-    </svg>
   );
 }
 

@@ -63,6 +63,20 @@ model Page {
   included        Boolean @default(false)
   excludeReason   String? // duplicate | thin-content | navigation | auth | tracking | pagination | low-priority ...
 
+  // Manual edits from the "Editable Preview" — set once a person moves this
+  // page to a different/renamed section by hand. Null means "use the
+  // automatic placement below". Content-hash-unchanged recrawls reuse this
+  // row as-is, so a manual edit survives re-crawling until the page's
+  // actual content changes.
+  sectionOverride String?
+
+  // The section name organizeSections() actually placed this page into at
+  // last generation (after applying per-section/total curation caps) —
+  // persisted because that placement can't be recomputed from category +
+  // importanceScore alone (it also depends on how many higher-ranked
+  // sibling pages exist). Null if this page didn't make the cut.
+  autoSection String?
+
   analysisSource String? // "deterministic" | "llm"
 
   wordCount   Int?

@@ -36,6 +36,17 @@ export function listWebsites(limit = 20) {
   return prisma.website.findMany({ orderBy: { updatedAt: 'desc' }, take: limit });
 }
 
+/** Every website paired with its current (latest-version) generated file, for the library/table view. */
+export function listWebsitesWithLatestFile(limit = 100) {
+  return prisma.website.findMany({
+    orderBy: { updatedAt: 'desc' },
+    take: limit,
+    include: {
+      generatedFiles: { orderBy: { version: 'desc' }, take: 1 },
+    },
+  });
+}
+
 export function updateWebsiteMonitoring(id: string, enabled: boolean, frequency: MonitoringFrequency, nextScheduledCrawlAt: Date | null) {
   return prisma.website.update({
     where: { id },
@@ -84,6 +95,33 @@ export function getPagesForWebsite(websiteId: string) {
 
 export function getIncludedPages(websiteId: string) {
   return prisma.page.findMany({ where: { websiteId, included: true, removedAt: null }, orderBy: { importanceScore: 'desc' } });
+}
+
+export function getPageForWebsite(websiteId: string, pageId: string) {
+  return prisma.page.findFirst({ where: { id: pageId, websiteId } });
+}
+
+/** Marks a page excluded for a system reason (e.g. curation cap), as opposed to a person removing it by hand. */
+export function markPageCuratedOut(pageId: string, reason: string) {
+  return prisma.page.update({ where: { id: pageId }, data: { included: false, excludeReason: reason } });
+}
+
+export interface PageEditInput {
+  description?: string;
+  section?: string | null; // null/'' clears the manual override back to automatic placement
+  included?: boolean;
+}
+
+/** Applies a manual edit from the "Editable Preview". Re-including a page clears any prior manual exclusion reason. */
+export function applyPageEdit(pageId: string, edit: PageEditInput) {
+  const data: Record<string, unknown> = {};
+  if (edit.description !== undefined) data.description = edit.description;
+  if (edit.section !== undefined) data.sectionOverride = edit.section?.trim() ? edit.section.trim() : null;
+  if (edit.included !== undefined) {
+    data.included = edit.included;
+    data.excludeReason = edit.included ? null : 'removed-by-user';
+  }
+  return prisma.page.update({ where: { id: pageId }, data });
 }
 
 export async function upsertPage(websiteId: string, url: string, data: Record<string, unknown>) {

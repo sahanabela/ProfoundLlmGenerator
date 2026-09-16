@@ -68,7 +68,8 @@ export type ExclusionReason =
   | 'fetch-failed'
   | 'non-html'
   | 'llm-excluded'
-  | 'below-curation-threshold';
+  | 'below-curation-threshold'
+  | 'removed-by-user';
 
 export const EXCLUSION_LABELS: Record<ExclusionReason, string> = {
   duplicate: 'duplicate pages',
@@ -84,6 +85,7 @@ export const EXCLUSION_LABELS: Record<ExclusionReason, string> = {
   'non-html': 'non-HTML resources',
   'llm-excluded': 'flagged as low-value by analysis',
   'below-curation-threshold': 'lower-priority pages trimmed to keep the file concise',
+  'removed-by-user': 'removed manually in the editor',
 };
 
 /** Structured intermediate representation rendered into llms.txt Markdown. */

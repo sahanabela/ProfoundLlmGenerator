@@ -28,10 +28,13 @@ export interface SectionCandidate {
 export interface OrganizeResult {
   sections: LlmsTxtSection[];
   curatedOut: Map<string, ExclusionReason>;
+  /** Original page.url -> the section name it actually landed in (only for pages that made the cut). */
+  pageSectionMap: Map<string, string>;
 }
 
 export function organizeSections(pages: SectionCandidate[]): OrganizeResult {
   const curatedOut = new Map<string, ExclusionReason>();
+  const pageSectionMap = new Map<string, string>();
   const buckets = new Map<string, SectionCandidate[]>();
 
   for (const page of pages) {
@@ -64,6 +67,7 @@ export function organizeSections(pages: SectionCandidate[]): OrganizeResult {
     }
 
     totalIncluded += kept.length;
+    kept.forEach((p) => pageSectionMap.set(p.url, name));
     if (kept.length > 0) sections.push({ name, pages: kept.map(toLink) });
   }
 
@@ -78,9 +82,10 @@ export function organizeSections(pages: SectionCandidate[]): OrganizeResult {
     keptOptional = keptOptional.slice(0, allowed);
   }
 
+  keptOptional.forEach((p) => pageSectionMap.set(p.url, 'Optional'));
   if (keptOptional.length > 0) sections.push({ name: 'Optional', pages: keptOptional.map(toLink) });
 
-  return { sections, curatedOut };
+  return { sections, curatedOut, pageSectionMap };
 }
 
 function toLink(page: SectionCandidate): LlmsTxtLink {

@@ -7,7 +7,7 @@ const sans = Inter({ subsets: ['latin'], variable: '--font-sans' });
 const mono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-mono' });
 
 export const metadata: Metadata = {
-  title: 'Waypoint — llms.txt generator',
+  title: 'Waypoint by Profound — llms.txt generator',
   description: 'Turn any website into a curated, LLM-friendly llms.txt map — automatically kept up to date.',
 };
 

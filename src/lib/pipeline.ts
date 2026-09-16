@@ -9,14 +9,14 @@ import { classifyDeterministic } from '@/lib/analyzer/classify';
 import { computeImportanceScore } from '@/lib/analyzer/importance';
 import { applyContentFilters, type FilterCandidate } from '@/lib/analyzer/filter';
 import { analyzePagesWithLlm, isLlmConfigured, type LlmPageInput } from '@/lib/analyzer/llm';
-import { organizeSections, type SectionCandidate } from '@/lib/generator/sections';
+import { groupPagesBySection, type EditableSectionCandidate } from '@/lib/generator/editorSections';
 import { renderLlmsTxt } from '@/lib/generator/generateLlmsTxt';
 import { validateLlmsTxt } from '@/lib/generator/validateLlmsTxt';
 import { deriveSiteMetadata } from '@/lib/generator/siteMetadata';
 import { fetchExistingLlmsTxt } from '@/lib/generator/existingLlmsTxt';
 import { computeContentHash } from '@/lib/hash';
 import { computeNextRunAt } from '@/lib/monitoring/scheduler';
-import { DEFAULT_CRAWL_LIMITS, type CrawledPage, type ExclusionReason, type LlmsTxtDoc } from '@/types';
+import { DEFAULT_CRAWL_LIMITS, type CrawledPage, type ExclusionReason, type LlmsTxtDoc, type LlmsTxtLink } from '@/types';
 import {
   getWebsite,
   createCrawl,
@@ -26,8 +26,10 @@ import {
   markPageMissing,
   markPageRemoved,
   createGeneratedFile,
+  getLatestGeneratedFile,
   createChangeEvents,
   touchWebsiteAfterCrawl,
+  markPageCuratedOut,
 } from '@/lib/db/repository';
 
 interface WorkingPage {
@@ -50,6 +52,10 @@ interface WorkingPage {
   contentType: string | null;
   isHome: boolean;
   reused: boolean;
+}
+
+function toLlmsTxtLink(page: EditableSectionCandidate): LlmsTxtLink {
+  return { title: page.title, url: page.markdownUrl ?? page.url, description: page.description || undefined };
 }
 
 function truncateAtWordBoundary(text: string, max: number): string {
@@ -245,10 +251,20 @@ export async function runCrawlPipeline(websiteId: string, trigger: 'manual' | 's
 
     await updateCrawl(crawl.id, { stage: 'organizing', stageDetail: 'Grouping pages into sections…' });
 
-    const sectionCandidates: SectionCandidate[] = working
+    const sectionCandidates: EditableSectionCandidate[] = working
       .filter((w) => w.included)
-      .map((w) => ({ url: w.url, markdownUrl: w.markdownUrl, title: w.title, description: w.description, category: w.category, importanceScore: w.importanceScore, isHome: w.isHome }));
-    const { sections, curatedOut } = organizeSections(sectionCandidates);
+      .map((w) => ({
+        url: w.url,
+        markdownUrl: w.markdownUrl,
+        title: w.title,
+        description: w.description,
+        category: w.category,
+        importanceScore: w.importanceScore,
+        isHome: w.isHome,
+        sectionOverride: existingByUrl.get(w.url)?.sectionOverride ?? null,
+      }));
+    const { groups, curatedOut, autoSectionMap } = groupPagesBySection(sectionCandidates);
+    const sections = groups.map((g) => ({ name: g.name, pages: g.pages.map(toLlmsTxtLink) }));
     for (const w of working) {
       const reason = curatedOut.get(w.url);
       if (reason) {
@@ -271,6 +287,7 @@ export async function runCrawlPipeline(websiteId: string, trigger: 'manual' | 's
         importanceScore: w.importanceScore,
         included: w.included,
         excludeReason: w.excludeReason ?? null,
+        autoSection: autoSectionMap.get(w.url) ?? null,
         analysisSource: w.analysisSource,
         wordCount: w.wordCount,
         depth: w.depth,
@@ -391,4 +408,96 @@ export async function runCrawlPipeline(websiteId: string, trigger: 'manual' | 's
     await updateCrawl(crawl.id, { status: 'failed', error: err?.message ?? String(err), finishedAt: new Date() }).catch(() => {});
     throw err;
   }
+}
+
+/**
+ * Rebuilds llms.txt purely from what's currently in the Page table — no
+ * crawling. Used by the "Editable Preview": once a person has moved pages
+ * between sections, edited descriptions, or removed/re-added pages, this
+ * regenerates a new GeneratedFile version from that edited state.
+ */
+export async function regenerateFromStoredPages(websiteId: string) {
+  const website = await getWebsite(websiteId);
+  if (!website) throw new Error('Website not found');
+
+  const allPages = await getPagesForWebsite(websiteId);
+
+  const isHome = (url: string) => {
+    try {
+      return normalizeOrigin(url) === website.normalizedUrl && new URL(url).pathname === '/';
+    } catch {
+      return false;
+    }
+  };
+
+  const candidates: (EditableSectionCandidate & { id: string })[] = allPages
+    .filter((p) => p.included)
+    .map((p) => ({
+      id: p.id,
+      url: p.url,
+      markdownUrl: p.markdownUrl,
+      title: p.title || p.url,
+      description: p.description || '',
+      category: p.category || 'Resources',
+      importanceScore: p.importanceScore,
+      isHome: isHome(p.url),
+      sectionOverride: p.sectionOverride,
+    }));
+
+  const { groups, curatedOut } = groupPagesBySection(candidates);
+  const sections = groups.map((g) => ({ name: g.name, pages: g.pages.map(toLlmsTxtLink) }));
+
+  // A regenerate can newly curate-out a page (e.g. re-adding one that no
+  // longer fits its section's cap) — keep the DB in sync with what's shown.
+  if (curatedOut.size > 0) {
+    await Promise.all(
+      candidates.filter((c) => curatedOut.has(c.url)).map((c) => markPageCuratedOut(c.id, curatedOut.get(c.url)!)),
+    );
+  }
+
+  const includedPages = candidates.filter((c) => !curatedOut.has(c.url));
+
+  const derived = deriveSiteMetadata({ origin: website.normalizedUrl, homepage: null });
+  const doc: LlmsTxtDoc = {
+    siteName: website.siteName || derived.siteName,
+    summary: website.siteDescription || derived.siteDescription,
+    sections,
+  };
+  const content = renderLlmsTxt(doc);
+  const validation = validateLlmsTxt(content);
+
+  const excludedCount = allPages.filter((p) => !p.included).length + curatedOut.size;
+  const exclusionBreakdown: Record<string, number> = {};
+  for (const p of allPages) {
+    if (p.included) continue;
+    const reason = (p.excludeReason as ExclusionReason) || 'removed-by-user';
+    exclusionBreakdown[reason] = (exclusionBreakdown[reason] ?? 0) + 1;
+  }
+  for (const reason of curatedOut.values()) {
+    exclusionBreakdown[reason] = (exclusionBreakdown[reason] ?? 0) + 1;
+  }
+
+  const previousStats = (await getLatestGeneratedFile(websiteId))?.stats;
+  const previous = previousStats ? JSON.parse(previousStats) : {};
+
+  const stats = {
+    discovered: previous.discovered ?? allPages.length,
+    crawled: previous.crawled ?? allPages.length,
+    included: includedPages.length,
+    excluded: excludedCount,
+    failed: previous.failed ?? 0,
+    notReachedDueToBudget: previous.notReachedDueToBudget ?? 0,
+    exclusionBreakdown,
+    sections: sections.map((s) => ({ name: s.name, count: s.pages.length })),
+    validation,
+    usedDynamicFallback: previous.usedDynamicFallback ?? false,
+    robotsBlockedSamples: previous.robotsBlockedSamples ?? [],
+    added: 0,
+    changed: 0,
+    removed: 0,
+    editedManually: true,
+  };
+
+  const file = await createGeneratedFile(websiteId, content, stats);
+  return { content, stats, validation, version: file.version, createdAt: file.createdAt };
 }
