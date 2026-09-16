@@ -47,11 +47,11 @@ export default function LibraryPage() {
         <div className="animate-fade-up">
           <h1 className="font-display text-3xl tracking-tight text-ink-950">Generated files</h1>
           <p className="mt-2 max-w-lg text-sm leading-relaxed text-ink-950/55">
-            Every site you've generated an <code className="rounded bg-ink-950/5 px-1.5 py-0.5 font-mono text-[0.85em]">llms.txt</code> for, with its
+            Every site you&rsquo;ve generated an <code className="rounded bg-ink-950/5 px-1.5 py-0.5 font-mono text-[0.85em]">llms.txt</code> for, with its
             current version and when it was last regenerated.
           </p>
 
-          <div className="relative z-10 mt-8 overflow-hidden rounded-xl2 border border-ink-950/10 bg-white/60 shadow-card">
+          <div className="mt-8 overflow-hidden rounded-xl2 border border-ink-950/10 bg-white/60 shadow-card">
             {files === null && <SkeletonRows />}
             {files !== null && files.length === 0 && <EmptyState />}
             {files !== null && files.length > 0 && <FilesTable files={files} />}
@@ -131,7 +131,7 @@ function EmptyState() {
   return (
     <div className="px-8 py-16 text-center">
       <p className="font-display text-lg text-ink-950">No files generated yet</p>
-      <p className="mx-auto mt-2 max-w-sm text-sm text-ink-950/50">Generate your first llms.txt and it'll show up here.</p>
+      <p className="mx-auto mt-2 max-w-sm text-sm text-ink-950/50">Generate your first llms.txt and it&rsquo;ll show up here.</p>
       <Link href="/" className="mt-5 inline-block rounded-lg bg-ink-950 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-accent">
         Generate llms.txt
       </Link>

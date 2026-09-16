@@ -34,8 +34,8 @@ export async function runDueCrawls(): Promise<{ websiteId: string; ok: boolean; 
     try {
       await runCrawlPipeline(website.id, 'scheduled');
       results.push({ websiteId: website.id, ok: true });
-    } catch (err: any) {
-      results.push({ websiteId: website.id, ok: false, error: err?.message ?? String(err) });
+    } catch (err) {
+      results.push({ websiteId: website.id, ok: false, error: err instanceof Error ? err.message : String(err) });
     }
   }
 

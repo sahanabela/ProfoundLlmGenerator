@@ -129,7 +129,7 @@ export default function SitePage() {
 
         {failed && (
           <div className="mx-auto mt-16 max-w-lg rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
-            <p className="font-display text-lg text-red-700">The crawl couldn't finish</p>
+            <p className="font-display text-lg text-red-700">The crawl couldn&rsquo;t finish</p>
             <p className="mt-2 text-sm text-red-600">{crawl?.error ?? 'An unexpected error occurred.'}</p>
             <button onClick={handleRegenerate} className="mt-4 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">
               Try again

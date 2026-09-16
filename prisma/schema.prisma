@@ -63,19 +63,17 @@ model Page {
   included        Boolean @default(false)
   excludeReason   String? // duplicate | thin-content | navigation | auth | tracking | pagination | low-priority ...
 
-  // Manual edits from the "Editable Preview" — set once a person moves this
-  // page to a different/renamed section by hand. Null means "use the
-  // automatic placement below". Content-hash-unchanged recrawls reuse this
-  // row as-is, so a manual edit survives re-crawling until the page's
-  // actual content changes.
+  // Manual edits from the "Editable Preview". sectionOverride moves the page
+  // to a different/renamed section by hand (null = use the automatic
+  // category + importance-band placement, recomputed fresh at generation
+  // time — see groupPagesBySection). manualEdit is set the moment a person
+  // edits a page's description, section, or included/removed state through
+  // the editor, and means "never silently overwrite my curation" — the
+  // crawl pipeline keeps this row's category/description/included/
+  // excludeReason exactly as-is on future crawls even once the page's
+  // content changes, instead of re-running automatic classification on it.
   sectionOverride String?
-
-  // The section name organizeSections() actually placed this page into at
-  // last generation (after applying per-section/total curation caps) —
-  // persisted because that placement can't be recomputed from category +
-  // importanceScore alone (it also depends on how many higher-ranked
-  // sibling pages exist). Null if this page didn't make the cut.
-  autoSection String?
+  manualEdit      Boolean @default(false)
 
   analysisSource String? // "deterministic" | "llm"
 
@@ -108,7 +106,10 @@ model GeneratedFile {
 
   createdAt DateTime @default(now())
 
-  @@index([websiteId, version])
+  // Versions are assigned read-then-write (see createGeneratedFile) — this
+  // guards against two concurrent regenerations for the same website ever
+  // landing on the same version number instead of silently duplicating one.
+  @@unique([websiteId, version])
 }
 
 model Crawl {

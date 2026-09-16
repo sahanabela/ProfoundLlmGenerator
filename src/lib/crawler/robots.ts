@@ -11,7 +11,10 @@ export interface RobotsRules {
   crawlDelaySeconds?: number;
 }
 
-const OUR_AGENT = 'llmstxtgeneratorbot';
+// Must match the bot name in safeFetch.ts's User-Agent header (lowercased,
+// no version/comment suffix) so a robots.txt group written for our bot by
+// name actually matches.
+const OUR_AGENT = 'waypointllmstxtbot';
 
 export async function fetchRobots(origin: string, timeoutMs: number): Promise<RobotsRules> {
   const result = await safeFetch(new URL('/robots.txt', origin).toString(), { timeoutMs });
@@ -92,14 +95,16 @@ export function isAllowedByRobots(pathWithQuery: string, rules: RobotsRules): bo
 }
 
 function matchesRobotsPattern(path: string, pattern: string): boolean {
-  // Support the common robots.txt wildcard `*` and end-anchor `$`.
+  // Support the common robots.txt wildcard `*` and end-anchor `$`. Every
+  // pattern is a prefix match (implicit `^`) unless it ends with a literal
+  // `$`, which the middle .replace() turns back into a real regex end-anchor
+  // after the first .replace() escaped it along with the rest of the pattern.
   const escaped = pattern
     .replace(/[.+^${}()|[\]\\]/g, '\\$&')
     .replace(/\*/g, '.*')
     .replace(/\\\$$/, '$');
-  const anchored = pattern.endsWith('$') ? `^${escaped}` : `^${escaped}`;
   try {
-    return new RegExp(anchored).test(path);
+    return new RegExp(`^${escaped}`).test(path);
   } catch {
     return path.startsWith(pattern);
   }

@@ -9,14 +9,14 @@ import { classifyDeterministic } from '@/lib/analyzer/classify';
 import { computeImportanceScore } from '@/lib/analyzer/importance';
 import { applyContentFilters, type FilterCandidate } from '@/lib/analyzer/filter';
 import { analyzePagesWithLlm, isLlmConfigured, type LlmPageInput } from '@/lib/analyzer/llm';
-import { groupPagesBySection, type EditableSectionCandidate } from '@/lib/generator/editorSections';
+import { groupPagesBySection, buildCandidatesFromStoredPages, type EditableSectionCandidate } from '@/lib/generator/editorSections';
 import { renderLlmsTxt } from '@/lib/generator/generateLlmsTxt';
 import { validateLlmsTxt } from '@/lib/generator/validateLlmsTxt';
 import { deriveSiteMetadata } from '@/lib/generator/siteMetadata';
 import { fetchExistingLlmsTxt } from '@/lib/generator/existingLlmsTxt';
 import { computeContentHash } from '@/lib/hash';
 import { computeNextRunAt } from '@/lib/monitoring/scheduler';
-import { DEFAULT_CRAWL_LIMITS, type CrawledPage, type ExclusionReason, type LlmsTxtDoc, type LlmsTxtLink } from '@/types';
+import { DEFAULT_CRAWL_LIMITS, type CrawledPage, type ChangeEventType, type ExclusionReason, type LlmsTxtDoc, type LlmsTxtLink, type MonitoringFrequency } from '@/types';
 import {
   getWebsite,
   createCrawl,
@@ -52,6 +52,8 @@ interface WorkingPage {
   contentType: string | null;
   isHome: boolean;
   reused: boolean;
+  /** True if a person edited this page's curation by hand — see the schema comment on Page.manualEdit. */
+  manualEdit: boolean;
 }
 
 function toLlmsTxtLink(page: EditableSectionCandidate): LlmsTxtLink {
@@ -141,7 +143,15 @@ export async function runCrawlPipeline(websiteId: string, trigger: 'manual' | 's
       const isHome = page === homepage;
       const contentExcerpt = page.mainContent.slice(0, 800);
 
-      if (existing && existing.contentHash === contentHash && existing.analysisSource) {
+      const contentUnchanged = existing?.contentHash === contentHash;
+
+      // A page a person has hand-curated in the Editable Preview
+      // (description/section/included) keeps that curation on every future
+      // crawl, even once the page's actual content changes — otherwise the
+      // very next content tweak (a timestamp, an ad, a "related posts"
+      // widget) would silently fall through to fresh automatic
+      // classification and undo their edit with no indication it happened.
+      if (existing && existing.analysisSource && (contentUnchanged || existing.manualEdit)) {
         working.push({
           url: page.url,
           canonicalUrl: page.canonicalUrl,
@@ -161,7 +171,8 @@ export async function runCrawlPipeline(websiteId: string, trigger: 'manual' | 's
           statusCode: page.statusCode,
           contentType: page.contentType,
           isHome,
-          reused: true,
+          reused: contentUnchanged,
+          manualEdit: existing.manualEdit,
         });
         continue;
       }
@@ -186,6 +197,7 @@ export async function runCrawlPipeline(websiteId: string, trigger: 'manual' | 's
         contentType: page.contentType,
         isHome,
         reused: false,
+        manualEdit: false,
       });
 
       if (!classification.confident) {
@@ -199,12 +211,12 @@ export async function runCrawlPipeline(websiteId: string, trigger: 'manual' | 's
     // page's first paragraph instead so the file doesn't repeat one line.
     const descriptionCounts = new Map<string, number>();
     for (const w of working) {
-      if (!w.reused && w.description) descriptionCounts.set(w.description, (descriptionCounts.get(w.description) ?? 0) + 1);
+      if (!w.reused && !w.manualEdit && w.description) descriptionCounts.set(w.description, (descriptionCounts.get(w.description) ?? 0) + 1);
     }
     const genericThreshold = Math.max(3, Math.ceil(working.length * 0.3));
     const firstParagraphByUrl = new Map(crawlResult.crawledPages.map((p) => [p.url, p.firstParagraph]));
     for (const w of working) {
-      if (w.reused || w.isHome) continue;
+      if (w.reused || w.manualEdit || w.isHome) continue;
       if ((descriptionCounts.get(w.description) ?? 0) < genericThreshold) continue;
       const fallback = (firstParagraphByUrl.get(w.url) ?? '').trim();
       w.description = fallback && fallback !== w.description ? truncateAtWordBoundary(fallback, 180) : '';
@@ -263,7 +275,7 @@ export async function runCrawlPipeline(websiteId: string, trigger: 'manual' | 's
         isHome: w.isHome,
         sectionOverride: existingByUrl.get(w.url)?.sectionOverride ?? null,
       }));
-    const { groups, curatedOut, autoSectionMap } = groupPagesBySection(sectionCandidates);
+    const { groups, curatedOut } = groupPagesBySection(sectionCandidates);
     const sections = groups.map((g) => ({ name: g.name, pages: g.pages.map(toLlmsTxtLink) }));
     for (const w of working) {
       const reason = curatedOut.get(w.url);
@@ -287,7 +299,6 @@ export async function runCrawlPipeline(websiteId: string, trigger: 'manual' | 's
         importanceScore: w.importanceScore,
         included: w.included,
         excludeReason: w.excludeReason ?? null,
-        autoSection: autoSectionMap.get(w.url) ?? null,
         analysisSource: w.analysisSource,
         wordCount: w.wordCount,
         depth: w.depth,
@@ -314,7 +325,7 @@ export async function runCrawlPipeline(websiteId: string, trigger: 'manual' | 's
     // Pages that existed before this crawl but weren't seen at all this time
     // (not even pre-excluded) get a grace period rather than instant removal.
     const seenThisCrawl = new Set([...working.map((w) => w.url), ...crawlResult.preExcluded.map((p) => p.url)]);
-    const changeEvents: { websiteId: string; crawlId: string; type: string; pageUrl: string; title?: string }[] = [];
+    const changeEvents: { websiteId: string; crawlId: string; type: ChangeEventType; pageUrl: string; title?: string }[] = [];
 
     for (const existing of existingPages) {
       if (seenThisCrawl.has(existing.url) || existing.removedAt) continue;
@@ -352,7 +363,13 @@ export async function runCrawlPipeline(websiteId: string, trigger: 'manual' | 's
     const validation = validateLlmsTxt(content);
 
     const includedCount = working.filter((w) => w.included).length;
-    const excludedReasons: ExclusionReason[] = [...working.filter((w) => !w.included).map((w) => w.excludeReason!).filter(Boolean), ...crawlResult.preExcluded.map((p) => p.reason)];
+    const excludedReasons: ExclusionReason[] = [
+      ...working
+        .filter((w) => !w.included)
+        .map((w) => w.excludeReason)
+        .filter((reason): reason is ExclusionReason => Boolean(reason)),
+      ...crawlResult.preExcluded.map((p) => p.reason),
+    ];
     const exclusionBreakdown: Record<string, number> = {};
     for (const reason of excludedReasons) exclusionBreakdown[reason] = (exclusionBreakdown[reason] ?? 0) + 1;
 
@@ -380,7 +397,7 @@ export async function runCrawlPipeline(websiteId: string, trigger: 'manual' | 's
 
     await createGeneratedFile(websiteId, content, stats);
 
-    const nextScheduledCrawlAt = computeNextRunAt(website.monitoringFrequency as any, now);
+    const nextScheduledCrawlAt = computeNextRunAt(website.monitoringFrequency as MonitoringFrequency, now);
     await touchWebsiteAfterCrawl(websiteId, {
       siteName: doc.siteName,
       siteDescription: doc.summary,
@@ -404,8 +421,9 @@ export async function runCrawlPipeline(websiteId: string, trigger: 'manual' | 's
     });
 
     return { crawlId: crawl.id, content, stats, validation, existingLlmsTxtContent };
-  } catch (err: any) {
-    await updateCrawl(crawl.id, { status: 'failed', error: err?.message ?? String(err), finishedAt: new Date() }).catch(() => {});
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await updateCrawl(crawl.id, { status: 'failed', error: message, finishedAt: new Date() }).catch(() => {});
     throw err;
   }
 }
@@ -421,28 +439,10 @@ export async function regenerateFromStoredPages(websiteId: string) {
   if (!website) throw new Error('Website not found');
 
   const allPages = await getPagesForWebsite(websiteId);
-
-  const isHome = (url: string) => {
-    try {
-      return normalizeOrigin(url) === website.normalizedUrl && new URL(url).pathname === '/';
-    } catch {
-      return false;
-    }
-  };
-
-  const candidates: (EditableSectionCandidate & { id: string })[] = allPages
-    .filter((p) => p.included)
-    .map((p) => ({
-      id: p.id,
-      url: p.url,
-      markdownUrl: p.markdownUrl,
-      title: p.title || p.url,
-      description: p.description || '',
-      category: p.category || 'Resources',
-      importanceScore: p.importanceScore,
-      isHome: isHome(p.url),
-      sectionOverride: p.sectionOverride,
-    }));
+  const candidates = buildCandidatesFromStoredPages(
+    allPages.filter((p) => p.included),
+    website.normalizedUrl,
+  );
 
   const { groups, curatedOut } = groupPagesBySection(candidates);
   const sections = groups.map((g) => ({ name: g.name, pages: g.pages.map(toLlmsTxtLink) }));

@@ -216,7 +216,6 @@ async function fetchAndExtract(url: string, depth: number, limits: CrawlLimits):
     markdownUrl,
     statusCode: res.status,
     contentType,
-    ok: true,
     title: metadata.title,
     description: metadata.description,
     firstParagraph: content.firstParagraph || null,

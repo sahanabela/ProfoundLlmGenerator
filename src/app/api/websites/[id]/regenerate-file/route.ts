@@ -11,7 +11,8 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   try {
     const result = await regenerateFromStoredPages(website.id);
     return NextResponse.json(result);
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? 'Failed to regenerate llms.txt' }, { status: 500 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to regenerate llms.txt';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

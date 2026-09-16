@@ -134,10 +134,11 @@ npm run db:push         # create the SQLite database from the Prisma schema
 npm run dev              # http://localhost:3000
 ```
 
-Run the test suite:
+Run the test suite and linter:
 
 ```bash
 npm test
+npm run lint
 ```
 
 Optional: run the monitoring scheduler in a second terminal (see "How updates work" below):
@@ -282,7 +283,7 @@ GET    /api/files                       every website's current generated file, 
 
 ## Testing
 
-`npm test` runs the Vitest suite (87 tests) covering URL normalization, internal/external + binary-asset
+`npm test` runs the Vitest suite (88 tests) covering URL normalization, internal/external + binary-asset
 detection, robots.txt parsing/precedence, sitemap + sitemap-index parsing (mocked HTTP), SSRF IP-range checks,
 deterministic classification, importance scoring, content filtering (duplicates/thin-content/navigation), section
 organization/curation caps, llms.txt generation + validation, and change diffing. No real network access is
@@ -296,8 +297,10 @@ required for any test.
   state without recrawling. A manually-placed page bypasses the normal per-section curation cap (it's an explicit
   choice); everything else keeps going through the same automatic cap-and-overflow-to-Optional logic used right
   after a crawl — including re-curating on save, so freeing up a slot (by moving or removing a page) can pull
-  another page back in from Optional. Edits are stored per-page (`Page.sectionOverride`) and survive re-crawling as
-  long as that page's content hasn't changed, the same way cached category/description do (see "How updates work").
+  another page back in from Optional. Any edit sets `Page.manualEdit`, which pins that page's category/description/
+  inclusion for good — unlike the ordinary "unchanged content reuses last analysis" cache (see "How updates work"),
+  a manual edit survives future crawls even once the page's actual content changes, so a routine re-crawl can never
+  silently undo a person's curation.
 - **Existing `/llms.txt` detection** — checked once per site; shown in the UI, expandable, for comparison.
 - **Transparent exclusion reporting** — every excluded page is bucketed by reason (duplicate, auth, thin-content,
   navigation, tracking, pagination, robots-blocked, below the curation cutoff, removed manually, …) and shown in

@@ -24,7 +24,7 @@ export interface SafeFetchResult {
   error?: string;
 }
 
-const DEFAULT_UA = 'LlmsTxtGeneratorBot/1.0 (+https://github.com/llms-txt-generator; polite crawler)';
+const DEFAULT_UA = 'WaypointLlmsTxtBot/1.0 (+https://llmstxt.org; polite crawler generating an llms.txt file)';
 
 export async function safeFetch(rawUrl: string, options: SafeFetchOptions = {}): Promise<SafeFetchResult> {
   const timeoutMs = options.timeoutMs ?? 10000;
@@ -49,9 +49,12 @@ export async function safeFetch(rawUrl: string, options: SafeFetchOptions = {}):
         signal: controller.signal,
         headers: { 'User-Agent': DEFAULT_UA, Accept: 'text/html,application/xhtml+xml,application/xml,text/markdown;q=0.9,*/*;q=0.5', ...options.headers },
       });
-    } catch (err: any) {
+    } catch (err) {
       clearTimeout(timer);
-      const msg = err?.name === 'AbortError' ? `Request timed out after ${timeoutMs}ms` : `Fetch failed: ${err?.message ?? err}`;
+      const msg =
+        err instanceof Error && err.name === 'AbortError'
+          ? `Request timed out after ${timeoutMs}ms`
+          : `Fetch failed: ${err instanceof Error ? err.message : String(err)}`;
       return fail(currentUrl, msg);
     }
     clearTimeout(timer);

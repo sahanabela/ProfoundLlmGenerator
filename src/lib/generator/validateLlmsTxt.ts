@@ -37,8 +37,9 @@ export function validateLlmsTxt(content: string): ValidationResult {
     const line = rawLine.trim();
     if (!line) continue;
 
-    const h1Match = line.match(H1_RE);
-    if (h1Match && !line.startsWith('##')) {
+    // H1_RE requires exactly one leading "#" followed by whitespace, so a
+    // "##..." line can never match it — no extra guard needed here.
+    if (H1_RE.test(line)) {
       h1Count++;
       sawH1 = true;
       continue;

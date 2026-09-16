@@ -31,8 +31,8 @@ export function computeImportanceScore(input: ImportanceInput): number {
   score += Math.min(input.inboundLinks, 20) * 1.5;
 
   if (input.wordCount < 60) score -= 25;
-  else if (input.wordCount > 300) score += 10;
   else if (input.wordCount > 800) score += 15;
+  else if (input.wordCount > 300) score += 10;
 
   if (input.hasMarkdownAlternate) score += 3; // spec-recommended, lightly preferred
 

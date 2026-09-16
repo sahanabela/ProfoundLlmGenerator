@@ -30,6 +30,12 @@ describe('computeImportanceScore', () => {
     const score = computeImportanceScore({ isHome: false, category: 'Unknown', depth: 10, wordCount: 0, inboundLinks: 0, hasMarkdownAlternate: false });
     expect(score).toBeGreaterThanOrEqual(0);
   });
+
+  it('rewards very long content (>800 words) more than moderately long content (300-800)', () => {
+    const moderate = computeImportanceScore({ isHome: false, category: 'Guides', depth: 1, wordCount: 500, inboundLinks: 0, hasMarkdownAlternate: false });
+    const long = computeImportanceScore({ isHome: false, category: 'Guides', depth: 1, wordCount: 1000, inboundLinks: 0, hasMarkdownAlternate: false });
+    expect(long).toBeGreaterThan(moderate);
+  });
 });
 
 describe('importanceBand', () => {

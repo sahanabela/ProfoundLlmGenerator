@@ -55,11 +55,6 @@ const UTILITY_PATH_PATTERNS = [
   /\/print\b/i,
 ];
 
-export interface ParsedInternalUrl {
-  normalized: string;
-  original: string;
-}
-
 /**
  * Returns null when the URL should never be queued/crawled at all (unsupported
  * scheme, obviously non-HTML binary, etc). Otherwise returns the normalized
@@ -140,11 +135,14 @@ export function looksLikeUtilityUrl(url: string): boolean {
 export function looksLikePaginationUrl(url: string): boolean {
   const u = new URL(url);
   if (/\/page\/\d+\/?$/i.test(u.pathname)) return true;
-  if (u.searchParams.has('page') || u.searchParams.has('p') && /^\d+$/.test(u.searchParams.get('p') ?? '')) {
-    const val = u.searchParams.get('page') ?? u.searchParams.get('p');
-    if (val && /^\d+$/.test(val) && Number(val) > 1) return true;
-  }
+
+  // ?page= or ?p=<N> past the first page.
+  const pageValue = u.searchParams.get('page') ?? u.searchParams.get('p');
+  if (pageValue && /^\d+$/.test(pageValue) && Number(pageValue) > 1) return true;
+
+  // ?offset= or ?start=<N> — numeric-offset pagination, any value counts.
   if (/^\d+$/.test(u.searchParams.get('offset') ?? '') || /^\d+$/.test(u.searchParams.get('start') ?? '')) return true;
+
   return false;
 }
 

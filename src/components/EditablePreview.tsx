@@ -36,69 +36,84 @@ export function EditablePreview({ websiteId, onSaved, onClose }: { websiteId: st
   const [showExcluded, setShowExcluded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [renamingSection, setRenamingSection] = useState<string | null>(null);
   const [movingPageId, setMovingPageId] = useState<string | null>(null);
-  const [newSectionDraft, setNewSectionDraft] = useState('');
 
   const load = useCallback(async () => {
-    const res = await fetch(`/api/websites/${websiteId}/editor`, { cache: 'no-store' });
-    const data = await res.json();
-    setSections(data.sections ?? []);
-    setExcluded(data.excluded ?? []);
+    try {
+      const res = await fetch(`/api/websites/${websiteId}/editor`, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
+      const data = await res.json();
+      setSections(data.sections ?? []);
+      setExcluded(data.excluded ?? []);
+    } catch {
+      setError('Could not load the editor. Try refreshing the page.');
+    }
   }, [websiteId]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  async function patchPage(pageId: string, body: { description?: string; section?: string | null; included?: boolean }) {
-    setDirty(true);
-    await fetch(`/api/websites/${websiteId}/pages/${pageId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+  /** PATCHes one page's edit; returns whether it actually saved, so callers can decide what to do next. */
+  async function patchPage(pageId: string, body: { description?: string; section?: string | null; included?: boolean }): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/websites/${websiteId}/pages/${pageId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`Save failed (${res.status})`);
+      setDirty(true);
+      setError(null);
+      return true;
+    } catch {
+      setError("Couldn't save that change — please try again.");
+      return false;
+    }
   }
 
   async function handleRemove(pageId: string) {
-    await patchPage(pageId, { included: false });
-    await load();
+    if (await patchPage(pageId, { included: false })) await load();
   }
 
   async function handleRestore(pageId: string) {
-    await patchPage(pageId, { included: true });
-    await load();
+    if (await patchPage(pageId, { included: true })) await load();
   }
 
   async function handleDescriptionBlur(page: EditorPage, value: string) {
     if (value === page.description) return;
-    await patchPage(page.id, { description: value });
+    const saved = await patchPage(page.id, { description: value });
+    // On failure, reload so the field snaps back to what's actually stored
+    // instead of silently showing an edit that never saved.
+    if (!saved) await load();
   }
 
   async function handleMove(pageId: string, section: string) {
     setMovingPageId(null);
-    await patchPage(pageId, { section });
-    await load();
+    if (await patchPage(pageId, { section })) await load();
   }
 
   async function handleRenameSection(section: EditorSection, newName: string) {
     setRenamingSection(null);
     const trimmed = newName.trim();
     if (!trimmed || trimmed === section.name) return;
-    setDirty(true);
-    await Promise.all(section.pages.map((p) => patchPage(p.id, { section: trimmed })));
-    await load();
+    const results = await Promise.all(section.pages.map((p) => patchPage(p.id, { section: trimmed })));
+    if (results.some(Boolean)) await load();
   }
 
   async function handleSave() {
     setSaving(true);
+    setError(null);
     try {
       const res = await fetch(`/api/websites/${websiteId}/regenerate-file`, { method: 'POST' });
       const data = await res.json();
-      if (res.ok) {
-        setDirty(false);
-        onSaved(data);
-      }
+      if (!res.ok) throw new Error(data?.error || `Regenerate failed (${res.status})`);
+      setDirty(false);
+      onSaved(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not regenerate the file.');
     } finally {
       setSaving(false);
     }
@@ -107,7 +122,11 @@ export function EditablePreview({ websiteId, onSaved, onClose }: { websiteId: st
   const allSectionNames = sections?.map((s) => s.name) ?? [];
 
   if (!sections || !excluded) {
-    return <div className="rounded-xl2 border border-ink-950/10 bg-white/60 p-8 text-center text-sm text-ink-950/40">Loading editor…</div>;
+    return (
+      <div className="rounded-xl2 border border-ink-950/10 bg-white/60 p-8 text-center text-sm text-ink-950/40">
+        {error ?? 'Loading editor…'}
+      </div>
+    );
   }
 
   return (
@@ -120,6 +139,8 @@ export function EditablePreview({ websiteId, onSaved, onClose }: { websiteId: st
           Back to preview
         </button>
       </div>
+
+      {error && <p className="rounded-xl2 border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-700">{error}</p>}
 
       <div className="space-y-4">
         {sections.map((section) => (

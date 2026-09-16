@@ -21,7 +21,7 @@ describe('parseRobotsTxt', () => {
       User-agent: *
       Disallow: /everything
 
-      User-agent: LlmsTxtGeneratorBot
+      User-agent: WaypointLlmsTxtBot
       Disallow: /only-this
     `);
     expect(rules.disallow).toEqual(['/only-this']);

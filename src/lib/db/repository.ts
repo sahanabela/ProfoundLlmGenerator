@@ -3,7 +3,7 @@
 
 import { prisma } from './client';
 import { normalizeOrigin } from '@/lib/crawler/normalizeUrl';
-import type { MonitoringFrequency } from '@/types';
+import type { MonitoringFrequency, ChangeEventType, ExclusionReason } from '@/types';
 
 export function validateAndNormalizeInputUrl(raw: string): { ok: true; baseUrl: string; origin: string } | { ok: false; error: string } {
   let url: URL;
@@ -77,16 +77,8 @@ export function updateCrawl(id: string, data: Record<string, unknown>) {
   return prisma.crawl.update({ where: { id }, data });
 }
 
-export function getCrawl(id: string) {
-  return prisma.crawl.findUnique({ where: { id } });
-}
-
 export function getLatestCrawl(websiteId: string) {
   return prisma.crawl.findFirst({ where: { websiteId }, orderBy: { startedAt: 'desc' } });
-}
-
-export function listRecentCrawls(websiteId: string, limit = 10) {
-  return prisma.crawl.findMany({ where: { websiteId }, orderBy: { startedAt: 'desc' }, take: limit });
 }
 
 export function getPagesForWebsite(websiteId: string) {
@@ -102,7 +94,7 @@ export function getPageForWebsite(websiteId: string, pageId: string) {
 }
 
 /** Marks a page excluded for a system reason (e.g. curation cap), as opposed to a person removing it by hand. */
-export function markPageCuratedOut(pageId: string, reason: string) {
+export function markPageCuratedOut(pageId: string, reason: ExclusionReason) {
   return prisma.page.update({ where: { id: pageId }, data: { included: false, excludeReason: reason } });
 }
 
@@ -112,9 +104,14 @@ export interface PageEditInput {
   included?: boolean;
 }
 
-/** Applies a manual edit from the "Editable Preview". Re-including a page clears any prior manual exclusion reason. */
+/**
+ * Applies a manual edit from the "Editable Preview" and marks the page as
+ * manually curated (see Page.manualEdit) so a future crawl's automatic
+ * classification doesn't silently overwrite it. Re-including a page clears
+ * any prior manual exclusion reason.
+ */
 export function applyPageEdit(pageId: string, edit: PageEditInput) {
-  const data: Record<string, unknown> = {};
+  const data: Record<string, unknown> = { manualEdit: true };
   if (edit.description !== undefined) data.description = edit.description;
   if (edit.section !== undefined) data.sectionOverride = edit.section?.trim() ? edit.section.trim() : null;
   if (edit.included !== undefined) {
@@ -140,10 +137,6 @@ export function markPageRemoved(id: string, removedAt: Date) {
   return prisma.page.update({ where: { id }, data: { removedAt, included: false } });
 }
 
-export function clearPageMissing(id: string) {
-  return prisma.page.update({ where: { id }, data: { missingSince: null } });
-}
-
 export async function createGeneratedFile(websiteId: string, content: string, stats: Record<string, unknown>) {
   const last = await prisma.generatedFile.findFirst({ where: { websiteId }, orderBy: { version: 'desc' } });
   const version = (last?.version ?? 0) + 1;
@@ -154,11 +147,7 @@ export function getLatestGeneratedFile(websiteId: string) {
   return prisma.generatedFile.findFirst({ where: { websiteId }, orderBy: { version: 'desc' } });
 }
 
-export function listGeneratedFiles(websiteId: string, limit = 20) {
-  return prisma.generatedFile.findMany({ where: { websiteId }, orderBy: { version: 'desc' }, take: limit });
-}
-
-export function createChangeEvents(events: { websiteId: string; crawlId?: string; type: string; pageUrl: string; title?: string; summary?: string }[]) {
+export function createChangeEvents(events: { websiteId: string; crawlId?: string; type: ChangeEventType; pageUrl: string; title?: string; summary?: string }[]) {
   if (events.length === 0) return Promise.resolve();
   return prisma.changeEvent.createMany({ data: events });
 }

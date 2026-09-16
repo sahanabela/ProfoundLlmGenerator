@@ -1,27 +1,14 @@
 // Shared domain types used across the crawler, analyzer, and generator layers.
 
-export type CrawlStage =
-  | 'discovering'
-  | 'crawling'
-  | 'extracting'
-  | 'analyzing'
-  | 'organizing'
-  | 'generating'
-  | 'done';
-
-export type CrawlStatus = 'pending' | 'running' | 'completed' | 'failed';
-
 export type MonitoringFrequency = 'manual' | 'daily' | 'weekly';
 
-/** A single URL discovered before it has been fetched/crawled. */
-export interface DiscoveredUrl {
-  url: string;
-  source: 'sitemap' | 'link-crawl' | 'seed';
-  depth: number;
-  priorityHint: number;
-}
+export type ChangeEventType = 'added' | 'changed' | 'removed';
 
-/** Result of fetching + extracting a single page. */
+/**
+ * Result of successfully fetching + extracting a single page. A fetch that
+ * fails or returns a non-HTML response never becomes a CrawledPage — see
+ * FailedFetch in lib/crawler/crawler.ts instead.
+ */
 export interface CrawledPage {
   url: string;
   canonicalUrl: string | null;
@@ -29,8 +16,6 @@ export interface CrawledPage {
 
   statusCode: number | null;
   contentType: string | null;
-  ok: boolean;
-  error?: string;
 
   title: string | null;
   description: string | null;
@@ -44,17 +29,6 @@ export interface CrawledPage {
   depth: number;
 }
 
-/** Deterministic or LLM analysis result for a page. */
-export interface PageAnalysis {
-  category: string;
-  importance: 'high' | 'medium' | 'low';
-  importanceScore: number;
-  description: string;
-  include: boolean;
-  excludeReason?: ExclusionReason;
-  source: 'deterministic' | 'llm';
-}
-
 export type ExclusionReason =
   | 'duplicate'
   | 'auth'
@@ -65,8 +39,6 @@ export type ExclusionReason =
   | 'search-results'
   | 'low-priority-utility'
   | 'excluded-by-robots'
-  | 'fetch-failed'
-  | 'non-html'
   | 'llm-excluded'
   | 'below-curation-threshold'
   | 'removed-by-user';
@@ -81,8 +53,6 @@ export const EXCLUSION_LABELS: Record<ExclusionReason, string> = {
   'search-results': 'search result pages',
   'low-priority-utility': 'utility pages (cart, legal, etc.)',
   'excluded-by-robots': 'blocked by robots.txt',
-  'fetch-failed': 'pages that failed to load',
-  'non-html': 'non-HTML resources',
   'llm-excluded': 'flagged as low-value by analysis',
   'below-curation-threshold': 'lower-priority pages trimmed to keep the file concise',
   'removed-by-user': 'removed manually in the editor',

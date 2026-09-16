@@ -11,17 +11,60 @@
 
 import { organizeSections, type SectionCandidate } from './sections';
 import { KNOWN_CATEGORIES } from '@/lib/analyzer/classify';
+import { normalizeOrigin } from '@/lib/crawler/normalizeUrl';
 import type { ExclusionReason } from '@/types';
 
 export interface EditableSectionCandidate extends SectionCandidate {
   sectionOverride: string | null;
 }
 
+/** True if `url` is the given website's homepage — it's folded into the H1/summary, never listed as a link. */
+export function isHomepageUrl(url: string, websiteOrigin: string): boolean {
+  try {
+    return normalizeOrigin(url) === websiteOrigin && new URL(url).pathname === '/';
+  } catch {
+    return false;
+  }
+}
+
+/** The subset of a persisted Page row that building an EditableSectionCandidate needs. */
+export interface StoredPageLike {
+  id: string;
+  url: string;
+  markdownUrl: string | null;
+  title: string | null;
+  description: string | null;
+  category: string | null;
+  importanceScore: number;
+  sectionOverride: string | null;
+}
+
+/**
+ * Turns currently-included Page rows into candidates for groupPagesBySection.
+ * Shared by the editor GET endpoint and the edit-only regenerate endpoint so
+ * "what does an included page look like as a candidate" can't drift between
+ * the two — see regenerateFromStoredPages and /api/websites/:id/editor.
+ */
+export function buildCandidatesFromStoredPages<T extends StoredPageLike>(
+  pages: T[],
+  websiteOrigin: string,
+): (EditableSectionCandidate & { id: string })[] {
+  return pages.map((p) => ({
+    id: p.id,
+    url: p.url,
+    markdownUrl: p.markdownUrl,
+    title: p.title || p.url,
+    description: p.description || '',
+    category: p.category || 'Resources',
+    importanceScore: p.importanceScore,
+    isHome: isHomepageUrl(p.url, websiteOrigin),
+    sectionOverride: p.sectionOverride,
+  }));
+}
+
 export interface GroupedSections<T extends EditableSectionCandidate> {
   groups: { name: string; pages: T[] }[];
   curatedOut: Map<string, ExclusionReason>;
-  /** Original page.url -> automatic placement, for pages with no override that made the cut. */
-  autoSectionMap: Map<string, string>;
 }
 
 export function groupPagesBySection<T extends EditableSectionCandidate>(candidates: T[]): GroupedSections<T> {
@@ -51,7 +94,7 @@ export function groupPagesBySection<T extends EditableSectionCandidate>(candidat
     .map((name) => ({ name, pages: [...byName.get(name)!].sort((a, b) => b.importanceScore - a.importanceScore) }))
     .filter((g) => g.pages.length > 0);
 
-  return { groups, curatedOut: autoResult.curatedOut, autoSectionMap: autoResult.pageSectionMap };
+  return { groups, curatedOut: autoResult.curatedOut };
 }
 
 /** Known categories first (in their canonical order), then any custom/renamed sections alphabetically, "Optional" always last. */
