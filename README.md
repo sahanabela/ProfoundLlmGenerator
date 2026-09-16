@@ -301,6 +301,9 @@ deterministic classification, importance scoring, content filtering (duplicates/
 organization/curation caps, llms.txt generation + validation, and change diffing. No real network access is
 required for any test.
 
+`.github/workflows/ci.yml` runs lint, test, and build on every push/PR to `main`, so none of the three can silently
+regress.
+
 ## Nice-to-have features implemented
 
 - **Editable Preview** — automatic curation is never perfect, so the "Edit sections & pages" view lets you rename a
