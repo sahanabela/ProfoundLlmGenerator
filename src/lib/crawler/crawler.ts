@@ -1,6 +1,10 @@
-// Phase 1 (Discovery) + Phase 2 (Extraction) + Phase 3 (Markdown Discovery)
-// orchestrator. Combines sitemap discovery with breadth-first internal-link
-// crawling, under bounded concurrency, respecting robots.txt.
+// Phase 1 (Discovery) + Phase 2 (Extraction) orchestrator. Combines sitemap
+// discovery with breadth-first internal-link crawling, under bounded
+// concurrency, respecting robots.txt.
+//
+// Markdown-alternate discovery (formerly done inline here as "Phase 3") is
+// deferred until after curation — see pipeline/markdownAlternates.ts — so
+// only pages that make the final cut pay for the verification requests.
 
 import pLimit from 'p-limit';
 import * as cheerio from 'cheerio';
@@ -20,7 +24,6 @@ import {
 import { discoveryPriority } from './priority';
 import { extractMainContent, looksLikeEmptyShell } from '@/lib/extractor/content';
 import { extractMetadata } from '@/lib/extractor/metadata';
-import { discoverMarkdownUrl } from '@/lib/extractor/markdownDiscovery';
 import { renderWithPlaywright } from './dynamicFallback';
 import type { CrawledPage, CrawlLimits, ExclusionReason } from '@/types';
 
@@ -202,7 +205,6 @@ async function fetchAndExtract(url: string, depth: number, limits: CrawlLimits):
   }
 
   const metadata = extractMetadata($, res.finalUrl, content.firstParagraph, content.firstH1);
-  const markdownUrl = await discoverMarkdownUrl(res.finalUrl, metadata.markdownAlternateUrl, limits.requestTimeoutMs);
 
   const internalLinks: string[] = [];
   $('a[href]').each((_, el) => {
@@ -213,7 +215,10 @@ async function fetchAndExtract(url: string, depth: number, limits: CrawlLimits):
   const page: CrawledPage = {
     url: res.finalUrl,
     canonicalUrl: metadata.canonicalUrl,
-    markdownUrl,
+    // Deferred: PHASE 5b (pipeline/markdownAlternates.ts) verifies this only for pages that
+    // survive curation, instead of every crawled page paying for up to 2 verification requests.
+    markdownUrl: null,
+    declaredMarkdownAlternate: metadata.markdownAlternateUrl,
     statusCode: res.status,
     contentType,
     title: metadata.title,

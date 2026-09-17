@@ -8,7 +8,6 @@ export interface RobotsRules {
   disallow: string[];
   allow: string[];
   sitemaps: string[];
-  crawlDelaySeconds?: number;
 }
 
 // Must match the bot name in safeFetch.ts's User-Agent header (lowercased,
@@ -29,7 +28,7 @@ export function parseRobotsTxt(text: string): RobotsRules {
   const sitemaps: string[] = [];
 
   // Group rules by user-agent block.
-  type Group = { agents: string[]; disallow: string[]; allow: string[]; crawlDelay?: number };
+  type Group = { agents: string[]; disallow: string[]; allow: string[] };
   const groups: Group[] = [];
   let current: Group | null = null;
 
@@ -57,7 +56,8 @@ export function parseRobotsTxt(text: string): RobotsRules {
     if (!current) continue;
     if (field === 'disallow' && value) current.disallow.push(value);
     else if (field === 'allow' && value) current.allow.push(value);
-    else if (field === 'crawl-delay') current.crawlDelay = Number(value) || undefined;
+    // Crawl-delay is intentionally not parsed: we don't throttle by it (see README > Tradeoffs);
+    // bounded concurrency + a small page budget is this app's politeness mechanism instead.
   }
 
   const specific = groups.find((g) => g.agents.some((a) => a.includes(OUR_AGENT)));
@@ -69,7 +69,6 @@ export function parseRobotsTxt(text: string): RobotsRules {
     disallow: applicable?.disallow ?? [],
     allow: applicable?.allow ?? [],
     sitemaps,
-    crawlDelaySeconds: applicable?.crawlDelay,
   };
 }
 

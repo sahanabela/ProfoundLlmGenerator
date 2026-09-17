@@ -41,7 +41,11 @@ export function classifyPages(crawledPages: CrawledPage[], existingByUrl: Map<st
       working.push({
         url: page.url,
         canonicalUrl: page.canonicalUrl,
-        markdownUrl: page.markdownUrl,
+        // Reused/manually-edited pages skip re-verification entirely — carry forward the
+        // already-verified value from the last crawl rather than this crawl's (always-null,
+        // not-yet-discovered) markdownUrl. See workingPage.ts.
+        markdownUrl: existing.markdownUrl,
+        declaredMarkdownAlternate: page.declaredMarkdownAlternate,
         title: existing.title || title,
         description: existing.description || description,
         headings: page.headings,
@@ -67,7 +71,8 @@ export function classifyPages(crawledPages: CrawledPage[], existingByUrl: Map<st
     working.push({
       url: page.url,
       canonicalUrl: page.canonicalUrl,
-      markdownUrl: page.markdownUrl,
+      markdownUrl: page.markdownUrl, // always null here — PHASE 5b fills this in after curation
+      declaredMarkdownAlternate: page.declaredMarkdownAlternate,
       title,
       description,
       headings: page.headings,

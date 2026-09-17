@@ -7,7 +7,14 @@ import type { ExclusionReason } from '@/types';
 export interface WorkingPage {
   url: string;
   canonicalUrl: string | null;
+  /** Verified markdown alternate URL. Null until PHASE 5b (see pipeline/markdownAlternates.ts)
+   *  actually verifies it for the pages that survive curation — reused/manually-edited pages
+   *  carry their already-verified value straight through instead. */
   markdownUrl: string | null;
+  /** The page's own (unverified) `<link rel="alternate" type="text/markdown">` href, if any —
+   *  extracted for free during content extraction. Used as a cheap proxy for importance scoring
+   *  before verification happens, and as the first candidate PHASE 5b verifies. */
+  declaredMarkdownAlternate: string | null;
   title: string;
   description: string;
   headings: string[];

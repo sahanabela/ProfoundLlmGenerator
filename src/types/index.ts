@@ -12,7 +12,13 @@ export type ChangeEventType = 'added' | 'changed' | 'removed';
 export interface CrawledPage {
   url: string;
   canonicalUrl: string | null;
+  /** Always null straight out of the crawler — verifying a markdown alternate costs a network
+   *  request, so it's deferred until after curation (see pipeline/markdownAlternates.ts) and only
+   *  done for the pages that actually make the final cut. */
   markdownUrl: string | null;
+  /** The page's own declared `<link rel="alternate" type="text/markdown">` href, unverified.
+   *  Free to extract from the page's own HTML, so it's captured at crawl time regardless. */
+  declaredMarkdownAlternate: string | null;
 
   statusCode: number | null;
   contentType: string | null;
@@ -100,7 +106,9 @@ export const DEFAULT_CRAWL_LIMITS: CrawlLimits = {
   maxPages: Number(process.env.CRAWL_MAX_PAGES ?? 100),
   maxDepth: Number(process.env.CRAWL_MAX_DEPTH ?? 5),
   requestTimeoutMs: Number(process.env.CRAWL_REQUEST_TIMEOUT_MS ?? 10000),
-  concurrency: Number(process.env.CRAWL_CONCURRENCY ?? 5),
+  // 8 is a reasonable default for most sites' capacity; raise it via env for a site you know
+  // can take more load, or lower it to be gentler on a small/shared host.
+  concurrency: Number(process.env.CRAWL_CONCURRENCY ?? 8),
 };
 
 export const MAX_RESPONSE_BYTES = 3 * 1024 * 1024; // 3MB cap per response

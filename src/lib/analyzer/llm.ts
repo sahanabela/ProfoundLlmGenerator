@@ -6,6 +6,7 @@
 // zod schema before it's trusted. See README > "How Analysis Works".
 
 import Anthropic from '@anthropic-ai/sdk';
+import pLimit from 'p-limit';
 import { z } from 'zod';
 import { KNOWN_CATEGORIES } from './classify';
 
@@ -61,6 +62,10 @@ const tool: Anthropic.Tool = {
   },
 };
 
+// Batches are fully independent requests, so they run concurrently rather than one-at-a-time —
+// capped so a large site doesn't fire off dozens of Anthropic requests at once.
+const BATCH_CONCURRENCY = 4;
+
 /** Batches ambiguous pages to the LLM and returns validated results keyed by URL. Fails soft. */
 export async function analyzePagesWithLlm(pages: LlmPageInput[]): Promise<Map<string, LlmAnalysisResult>> {
   const results = new Map<string, LlmAnalysisResult>();
@@ -68,31 +73,40 @@ export async function analyzePagesWithLlm(pages: LlmPageInput[]): Promise<Map<st
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+  const batches: LlmPageInput[][] = [];
   for (let i = 0; i < pages.length; i += BATCH_SIZE) {
-    const batch = pages.slice(i, i + BATCH_SIZE);
-    try {
-      const message = await client.messages.create({
-        model: MODEL,
-        max_tokens: 4000,
-        tools: [tool],
-        tool_choice: { type: 'tool', name: TOOL_NAME },
-        messages: [{ role: 'user', content: buildPrompt(batch) }],
-      });
-
-      const toolUse = message.content.find((block): block is Anthropic.ToolUseBlock => block.type === 'tool_use');
-      if (!toolUse) continue;
-
-      const parsed = z.object({ analyses: z.array(AnalysisSchema) }).safeParse(toolUse.input);
-      if (!parsed.success) continue;
-
-      for (const analysis of parsed.data.analyses) {
-        if (batch.some((p) => p.url === analysis.url)) results.set(analysis.url, analysis);
-      }
-    } catch (err) {
-      // Fail soft: this batch simply keeps its deterministic classification.
-      console.error('[llm] analysis batch failed, falling back to deterministic rules:', err);
-    }
+    batches.push(pages.slice(i, i + BATCH_SIZE));
   }
+
+  const limit = pLimit(BATCH_CONCURRENCY);
+  await Promise.all(
+    batches.map((batch) =>
+      limit(async () => {
+        try {
+          const message = await client.messages.create({
+            model: MODEL,
+            max_tokens: 4000,
+            tools: [tool],
+            tool_choice: { type: 'tool', name: TOOL_NAME },
+            messages: [{ role: 'user', content: buildPrompt(batch) }],
+          });
+
+          const toolUse = message.content.find((block): block is Anthropic.ToolUseBlock => block.type === 'tool_use');
+          if (!toolUse) return;
+
+          const parsed = z.object({ analyses: z.array(AnalysisSchema) }).safeParse(toolUse.input);
+          if (!parsed.success) return;
+
+          for (const analysis of parsed.data.analyses) {
+            if (batch.some((p) => p.url === analysis.url)) results.set(analysis.url, analysis);
+          }
+        } catch (err) {
+          // Fail soft: this batch simply keeps its deterministic classification.
+          console.error('[llm] analysis batch failed, falling back to deterministic rules:', err);
+        }
+      }),
+    ),
+  );
 
   return results;
 }

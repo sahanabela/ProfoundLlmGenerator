@@ -85,10 +85,6 @@ export function getPagesForWebsite(websiteId: string) {
   return prisma.page.findMany({ where: { websiteId, removedAt: null } });
 }
 
-export function getIncludedPages(websiteId: string) {
-  return prisma.page.findMany({ where: { websiteId, included: true, removedAt: null }, orderBy: { importanceScore: 'desc' } });
-}
-
 export function getPageForWebsite(websiteId: string, pageId: string) {
   return prisma.page.findFirst({ where: { id: pageId, websiteId } });
 }

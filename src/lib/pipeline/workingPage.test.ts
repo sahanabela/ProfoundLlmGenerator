@@ -6,6 +6,7 @@ function makeWorking(overrides: Partial<WorkingPage> = {}): WorkingPage {
     url: 'https://example.com/a',
     canonicalUrl: null,
     markdownUrl: null,
+    declaredMarkdownAlternate: null,
     title: 'Page',
     description: '',
     headings: [],

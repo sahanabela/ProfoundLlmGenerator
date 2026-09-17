@@ -8,6 +8,7 @@ function makeWorking(overrides: Partial<WorkingPage> = {}): WorkingPage {
     url: 'https://example.com/a',
     canonicalUrl: null,
     markdownUrl: null,
+    declaredMarkdownAlternate: null,
     title: 'Page',
     description: 'A shared boilerplate description.',
     headings: [],
@@ -129,5 +130,15 @@ describe('scoreImportance', () => {
     const working = [makeWorking({ url: 'https://example.com/a', importanceScore: 999, reused: true })];
     scoreImportance(working, new Map());
     expect(working[0].importanceScore).toBe(999);
+  });
+
+  it('uses a fresh page\'s declared (unverified) markdown alternate as a scoring signal, since verification is deferred', () => {
+    const withDeclared = [makeWorking({ url: 'https://example.com/a', category: 'Documentation', declaredMarkdownAlternate: 'https://example.com/a.md' })];
+    const withoutDeclared = [makeWorking({ url: 'https://example.com/b', category: 'Documentation' })];
+
+    scoreImportance(withDeclared, new Map());
+    scoreImportance(withoutDeclared, new Map());
+
+    expect(withDeclared[0].importanceScore).toBeGreaterThan(withoutDeclared[0].importanceScore);
   });
 });

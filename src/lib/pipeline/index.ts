@@ -6,7 +6,7 @@
 // This file is deliberately thin — it fetches data, calls one named phase
 // function per step (each in its own sibling file, most of them pure and
 // independently unit-tested), and handles the DB bookkeeping between phases.
-// See pipeline.test.ts for the phase-level tests.
+// See the *.test.ts file next to each phase for its tests.
 
 import { crawlWebsite } from '@/lib/crawler/crawler';
 import { normalizeOrigin } from '@/lib/crawler/normalizeUrl';
@@ -35,6 +35,7 @@ import { classifyPages } from './classifyPages';
 import { fixGenericDescriptions, applyLlmResults, scoreImportance } from './refineAnalysis';
 import { applyExclusionReasons } from './workingPage';
 import { organizeWorkingPagesIntoSections } from './buildSections';
+import { discoverMarkdownAlternatesForFinalPages } from './markdownAlternates';
 import { persistWorkingPages, persistPreExcludedPages, detectAndRecordChanges } from './persist';
 import { tallyExclusionReasons } from './stats';
 import { applyContentFilters, type FilterCandidate } from '@/lib/analyzer/filter';
@@ -112,6 +113,10 @@ export async function runCrawlPipeline(websiteId: string, trigger: 'manual' | 's
 
     const { sections, curatedOut } = organizeWorkingPagesIntoSections(working, existingByUrl);
     applyExclusionReasons(working, curatedOut);
+
+    // --- PHASE 5b: markdown-alternate discovery --------------------------
+    // Only now, for only the pages that made the final cut — see markdownAlternates.ts.
+    await discoverMarkdownAlternatesForFinalPages(sections, working, limits.requestTimeoutMs);
 
     // --- PHASE 8/9: persistence + change detection ----------------------
     const now = new Date();

@@ -78,7 +78,16 @@ export default function HomePage() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="w-full max-w-xl animate-fade-up" style={{ animationDelay: '80ms' }}>
+          {/* suppressHydrationWarning on the form + input: Chrome's built-in autofill/password-manager
+              heuristics tag text-input forms with form_signature/field_signature/etc. attributes right
+              after paint (even in Incognito, since it's core browser behavior, not an extension). Those
+              attributes never come from our render, so React's hydration diff is a false positive here. */}
+          <form
+            onSubmit={handleSubmit}
+            className="w-full max-w-xl animate-fade-up"
+            style={{ animationDelay: '80ms' }}
+            suppressHydrationWarning
+          >
             <div className="flex flex-col gap-3 rounded-2xl border border-ink-950/10 bg-white/70 p-2 shadow-card backdrop-blur sm:flex-row">
               <div className="flex flex-1 items-center gap-2 rounded-xl px-3.5 py-2.5">
                 <span className="font-mono text-sm text-ink-950/35">https://</span>
@@ -89,6 +98,7 @@ export default function HomePage() {
                   placeholder="example.com"
                   autoFocus
                   className="w-full bg-transparent font-mono text-sm text-ink-950 placeholder:text-ink-950/30 focus:outline-none"
+                  suppressHydrationWarning
                 />
               </div>
               <button

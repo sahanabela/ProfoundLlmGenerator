@@ -24,16 +24,18 @@ https://example.com
 and it will:
 
 1. **Discover** the site's important pages (sitemap first, breadth-first link crawling as a fallback/supplement).
-2. **Extract** metadata and main content from each page (title, description, headings, canonical/markdown URLs).
+2. **Extract** metadata and main content from each page (title, description, headings, canonical URL).
 3. **Analyze** each page deterministically (and optionally with an LLM for ambiguous cases) — category, importance,
    a concise description, and an include/exclude decision.
 4. **Filter** out duplicates, thin pages, navigation chrome, auth flows, tracking URLs, and pagination.
 5. **Organize** what's left into a small number of meaningful sections (Documentation, Guides, API Reference, …)
    and curate down to a page-count budget, demoting low-importance pages into `Optional`.
-6. **Generate** a deterministic, validated `llms.txt` — rendered from a structured intermediate representation,
+6. **Discover markdown alternates** (`page.html.md` / `page.md`) — only for the pages that survived curation, since
+   verifying one costs a network request.
+7. **Generate** a deterministic, validated `llms.txt` — rendered from a structured intermediate representation,
    never freeform LLM output.
-7. **Persist** the whole crawl (pages, hashes, scores, categories, generated versions) to SQLite.
-8. **Monitor** the site on a schedule (manual / daily / weekly), detect added/changed/removed pages by content
+8. **Persist** the whole crawl (pages, hashes, scores, categories, generated versions) to SQLite.
+9. **Monitor** the site on a schedule (manual / daily / weekly), detect added/changed/removed pages by content
    hash, and **regenerate** the file automatically when something meaningful changes.
 
 ## Architecture
@@ -77,14 +79,17 @@ URL Submission → Generation API → Website Analyzer
                      ┌──────────────────┼───────────────────┐
                      ▼                  ▼                   ▼
                 Discovery           Extraction            Analysis
-          (sitemap + BFS crawl)  (metadata + content   (classify + score +
-           robots.txt-aware      + markdown discovery)   filter + optional LLM)
+          (sitemap + BFS crawl)   (metadata +           (classify + score +
+           robots.txt-aware)       content)              filter + optional LLM)
                      └──────────────────┼───────────────────┘
                                         ▼
                                    Page Model
                                         ▼
                           Ranking + Filtering + Section
                              Organization (curation cap)
+                                        ▼
+                      Markdown-alternate discovery (only for
+                        pages that survived curation, above)
                                         ▼
                               llms.txt Generator
                              (structured doc → Markdown)
@@ -122,8 +127,9 @@ src/
     pipeline/                  orchestrates all of the above — index.ts is the thin
                                entry point (runCrawlPipeline, regenerateFromStoredPages);
                                everything it calls (classifyPages, refineAnalysis,
-                               buildSections, persist, inboundLinks, stats) is a small,
-                               independently-unit-tested phase in its own file
+                               buildSections, markdownAlternates, persist, inboundLinks,
+                               stats) is a small, independently-unit-tested phase in its
+                               own file
   scripts/runScheduler.ts      standalone monitoring scheduler process
   types/                       shared domain types
 prisma/schema.prisma           Website / Page / GeneratedFile / Crawl / ChangeEvent
@@ -159,7 +165,7 @@ ANTHROPIC_API_KEY=         # optional — enables LLM classification for ambiguo
 ANTHROPIC_MODEL=           # optional, defaults to claude-haiku-4-5-20251001
 CRAWL_MAX_PAGES=100        # crawl budget per site
 CRAWL_MAX_DEPTH=5
-CRAWL_CONCURRENCY=5
+CRAWL_CONCURRENCY=8
 CRAWL_REQUEST_TIMEOUT_MS=10000
 SCHEDULER_POLL_INTERVAL_MS=300000   # only used by `npm run scheduler`
 ```
@@ -256,6 +262,10 @@ see Tradeoffs.
   binaries aren't auto-installed; see below) so a fresh `npm install` stays fast.
 - **Crawl limits are hard caps** (`CRAWL_MAX_PAGES`, `CRAWL_MAX_DEPTH`), not soft suggestions — this app will never
   attempt to crawl an unbounded site, by design.
+- **`robots.txt`'s `Crawl-delay` directive isn't honored** — politeness comes from a bounded page budget and
+  concurrency limit (`CRAWL_CONCURRENCY`) instead of per-request throttling. `Disallow`/`Allow` rules are fully
+  respected either way; `Crawl-delay` support would mean per-host request scheduling, which is more machinery than
+  a bounded, short-lived crawl needs.
 - **In-process background jobs**: the crawl pipeline runs fire-and-forget inside the Next.js server process rather
   than a real job queue, which works because `next dev`/`next start` is a long-lived Node process. This would need
   to change (e.g. a real queue) behind a serverless/edge deployment where a request's process can be frozen or

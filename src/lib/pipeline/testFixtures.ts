@@ -44,6 +44,7 @@ export function makeCrawledPage(overrides: Partial<CrawledPage> = {}): CrawledPa
     url: 'https://example.com/docs/existing',
     canonicalUrl: null,
     markdownUrl: null,
+    declaredMarkdownAlternate: null,
     statusCode: 200,
     contentType: 'text/html',
     title: 'Fresh Title',

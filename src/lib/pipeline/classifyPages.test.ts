@@ -24,6 +24,29 @@ describe('classifyPages', () => {
     expect(working[0].importanceScore).toBe(77);
   });
 
+  it('carries a reused page\'s already-verified markdownUrl from the DB, not the fresh crawl (which never re-verifies it)', () => {
+    const crawled = makeCrawledPage({ title: 'Fresh Title', description: 'Fresh description', mainContent: 'Fresh content', markdownUrl: null });
+    const existing = makeExistingPage({
+      contentHash: computeContentHash('Fresh Title', 'Fresh description', 'Fresh content'),
+      markdownUrl: 'https://example.com/docs/existing.md',
+    });
+    const existingByUrl = new Map([[crawled.url, existing]]);
+
+    const { working } = classifyPages([crawled], existingByUrl, undefined);
+
+    expect(working[0].reused).toBe(true);
+    expect(working[0].markdownUrl).toBe('https://example.com/docs/existing.md');
+  });
+
+  it('leaves a freshly-classified page\'s markdownUrl null, pending PHASE 5b discovery', () => {
+    const crawled = makeCrawledPage({ url: 'https://example.com/docs/new', declaredMarkdownAlternate: 'https://example.com/docs/new.md' });
+    const { working } = classifyPages([crawled], new Map(), undefined);
+
+    expect(working[0].reused).toBe(false);
+    expect(working[0].markdownUrl).toBeNull();
+    expect(working[0].declaredMarkdownAlternate).toBe('https://example.com/docs/new.md');
+  });
+
   it('re-classifies fresh when content changed and the page was not manually edited', () => {
     const crawled = makeCrawledPage({ url: 'https://example.com/docs/x', title: 'Docs X' });
     const existing = makeExistingPage({ url: 'https://example.com/docs/x', contentHash: 'stale-hash', manualEdit: false, description: 'Old curated description' });

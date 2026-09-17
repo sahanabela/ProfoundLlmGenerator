@@ -52,7 +52,13 @@ export function applyLlmResults(working: WorkingPage[], llmResults: Map<string, 
   }
 }
 
-/** Recomputes importanceScore for every freshly-analyzed page (reused/manually-curated scores are left untouched). */
+/**
+ * Recomputes importanceScore for every freshly-analyzed page (reused/manually-curated scores are
+ * left untouched). For a fresh page, `markdownUrl` isn't verified yet at this point in the
+ * pipeline (verification is deferred until after curation — see pipeline/markdownAlternates.ts),
+ * so this uses the page's own *declared* alternate link as a free, unverified proxy signal
+ * instead of paying for a verification request just to compute a score.
+ */
 export function scoreImportance(working: WorkingPage[], inboundCounts: Map<string, number>): void {
   for (const w of working) {
     if (w.reused) continue;
@@ -62,7 +68,7 @@ export function scoreImportance(working: WorkingPage[], inboundCounts: Map<strin
       depth: w.depth,
       wordCount: w.wordCount,
       inboundLinks: inboundCounts.get(w.url) ?? 0,
-      hasMarkdownAlternate: Boolean(w.markdownUrl),
+      hasMarkdownAlternate: Boolean(w.markdownUrl || w.declaredMarkdownAlternate),
     });
   }
 }
