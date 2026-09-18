@@ -1,6 +1,15 @@
 # Waypoint by Profound — automated llms.txt generator
 
-> A demo product concept built as an extension of [Profound](https://www.tryprofound.com/) — a curated llms.txt
+Deployed website: https://profoundllmgenerator-production.up.railway.app/
+
+<img width="1504" height="835" alt="image" src="https://github.com/user-attachments/assets/78ac4ce5-6ef1-4a43-bb50-87c787e0f5ad" />
+<img width="1504" height="835" alt="image" src="https://github.com/user-attachments/assets/50082905-2a28-47f0-940e-69f6edcfef7e" />
+<img width="1504" height="835" alt="image" src="https://github.com/user-attachments/assets/98c5e932-e17a-4a2a-b52b-909ae093bb19" />
+<img width="1504" height="835" alt="image" src="https://github.com/user-attachments/assets/7a7c9ad2-9c19-405b-82de-e16bf228ed56" />
+<img width="1504" height="835" alt="image" src="https://github.com/user-attachments/assets/d4f8319e-f8e2-46ea-84f5-48f5c0100638" />
+
+
+> A demo product concept that builds a curated llms.txt
 > generator and monitor for the AI-visibility era. Not an official Profound product.
 
 Point Waypoint at a website and it discovers the site's structure, crawls the pages that matter, and curates a
@@ -12,6 +21,50 @@ Built against the **llms.txt v2 spec** (llmstxt.org, updated August 2026) — tr
 older v1-era tutorials. v2's two notable changes this project leans on: markdown alternates can be discovered via
 either `page.html.md` or extension-replacement (`page.md`), and `Optional` is a naming convention rather than a
 tool with special mechanical meaning.
+
+## Setup
+
+```bash
+npm install
+cp .env.example .env   # already done if you cloned this repo as-is
+npm run db:push         # create the SQLite database from the Prisma schema
+npm run dev              # http://localhost:3000
+```
+
+Run the test suite and linter:
+
+```bash
+npm test
+npm run lint
+```
+
+Optional: run the monitoring scheduler in a second terminal (see "How updates work" below):
+
+```bash
+npm run scheduler
+```
+
+## Environment variables
+
+```
+DATABASE_URL=              # SQLite file, relative to prisma/schema.prisma (default: file:./dev.db → prisma/dev.db)
+ANTHROPIC_API_KEY=         # optional — enables LLM classification for ambiguous pages. App works fully without it.
+ANTHROPIC_MODEL=           # optional, defaults to claude-haiku-4-5-20251001
+CRAWL_MAX_PAGES=100        # crawl budget per site
+CRAWL_MAX_DEPTH=5
+CRAWL_CONCURRENCY=8
+CRAWL_REQUEST_TIMEOUT_MS=10000
+SCHEDULER_POLL_INTERVAL_MS=300000   # only used by `npm run scheduler`
+```
+
+**The app works with zero LLM configuration.** Deterministic URL/title/heading heuristics are the primary and
+only-required classification path; an LLM (when `ANTHROPIC_API_KEY` is set) is used strictly as a fallback for
+pages the deterministic rules couldn't confidently categorize, and every response is validated against a strict
+schema (via forced tool-use) before it's trusted.
+
+> Note on `DATABASE_URL`: Prisma resolves a relative sqlite path relative to `prisma/schema.prisma`, not the
+> project root. `file:./dev.db` therefore correctly means `prisma/dev.db` — don't change it to
+> `file:./prisma/dev.db`, which resolves to a confusing `prisma/prisma/dev.db`.
 
 ## Project overview
 
@@ -103,81 +156,6 @@ URL Submission → Generation API → Website Analyzer
                                   Monitoring
                         (scheduled re-crawl → diff → regenerate)
 ```
-
-### Code layout
-
-```
-src/
-  app/
-    page.tsx                 URL input hero
-    site/[id]/page.tsx        progress + results workspace
-    api/websites/...          REST-ish API routes
-  components/                 UrlForm-equivalent hero, CrawlProgress, WebsiteStats,
-                               LlmsPreview, MonitoringToggle
-  lib/
-    crawler/                  discover.ts (priority), crawler.ts, robots.ts, sitemap.ts,
-                               normalizeUrl.ts, dynamicFallback.ts (Playwright)
-    extractor/                metadata.ts, content.ts, markdownDiscovery.ts
-    analyzer/                 classify.ts, importance.ts, filter.ts, llm.ts
-    generator/                sections.ts, generateLlmsTxt.ts, validateLlmsTxt.ts,
-                               siteMetadata.ts, existingLlmsTxt.ts
-    monitoring/                diff.ts, scheduler.ts
-    security/                  ssrf.ts, safeFetch.ts
-    db/                        client.ts, repository.ts (Prisma)
-    pipeline/                  orchestrates all of the above — index.ts is the thin
-                               entry point (runCrawlPipeline, regenerateFromStoredPages);
-                               everything it calls (classifyPages, refineAnalysis,
-                               buildSections, markdownAlternates, persist, inboundLinks,
-                               stats) is a small, independently-unit-tested phase in its
-                               own file
-  scripts/runScheduler.ts      standalone monitoring scheduler process
-  types/                       shared domain types
-prisma/schema.prisma           Website / Page / GeneratedFile / Crawl / ChangeEvent
-```
-
-## Setup
-
-```bash
-npm install
-cp .env.example .env   # already done if you cloned this repo as-is
-npm run db:push         # create the SQLite database from the Prisma schema
-npm run dev              # http://localhost:3000
-```
-
-Run the test suite and linter:
-
-```bash
-npm test
-npm run lint
-```
-
-Optional: run the monitoring scheduler in a second terminal (see "How updates work" below):
-
-```bash
-npm run scheduler
-```
-
-## Environment variables
-
-```
-DATABASE_URL=              # SQLite file, relative to prisma/schema.prisma (default: file:./dev.db → prisma/dev.db)
-ANTHROPIC_API_KEY=         # optional — enables LLM classification for ambiguous pages. App works fully without it.
-ANTHROPIC_MODEL=           # optional, defaults to claude-haiku-4-5-20251001
-CRAWL_MAX_PAGES=100        # crawl budget per site
-CRAWL_MAX_DEPTH=5
-CRAWL_CONCURRENCY=8
-CRAWL_REQUEST_TIMEOUT_MS=10000
-SCHEDULER_POLL_INTERVAL_MS=300000   # only used by `npm run scheduler`
-```
-
-**The app works with zero LLM configuration.** Deterministic URL/title/heading heuristics are the primary and
-only-required classification path; an LLM (when `ANTHROPIC_API_KEY` is set) is used strictly as a fallback for
-pages the deterministic rules couldn't confidently categorize, and every response is validated against a strict
-schema (via forced tool-use) before it's trusted.
-
-> Note on `DATABASE_URL`: Prisma resolves a relative sqlite path relative to `prisma/schema.prisma`, not the
-> project root. `file:./dev.db` therefore correctly means `prisma/dev.db` — don't change it to
-> `file:./prisma/dev.db`, which resolves to a confusing `prisma/prisma/dev.db`.
 
 ## How crawling works
 
@@ -332,11 +310,3 @@ regress.
   the UI.
 - **Change history** — every added/changed/removed page is recorded as a `ChangeEvent` (`GET /:id/changes`).
 - **robots.txt transparency** — a banner tells the user how many paths were off-limits and why.
-
-### Known limitation
-
-Homepage detection (used to fold the root page into the H1/summary instead of listing it as a link) compares the
-crawled page's origin against the website's original input origin. A site that redirects its root to a different
-domain (e.g. `vitejs.dev` → `vite.dev`) can slip past that check and show up as a normal link instead. Pre-existing
-behavior, not introduced by the editor — noted here rather than silently patched, since a robust fix (e.g. tracking
-the *actual* seed URL's final redirected origin per crawl) is a small, separate, focused change.
